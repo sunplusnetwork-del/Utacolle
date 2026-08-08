@@ -3569,6 +3569,7 @@ export default function App() {
         </div>
         <div style={{ textAlign: 'center', marginTop: 14, display: 'flex', gap: 14, justifyContent: 'center' }}>
           <a href="./about.html" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>うたコレとは</a>
+          <a href="./terms.html" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>利用規約</a>
           <a href="./privacy.html" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>プライバシーポリシー</a>
         </div>
       </Wrap>
@@ -3941,6 +3942,9 @@ export default function App() {
         <div style={{ textAlign: 'center', marginTop: 18, marginBottom: 6, display: 'flex', gap: 14, justifyContent: 'center' }}>
           <a href="./about.html" target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>
             うたコレとは
+          </a>
+          <a href="./terms.html" target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>
+            利用規約
           </a>
           <a
             href="./privacy.html"

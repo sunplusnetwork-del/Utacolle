@@ -39,6 +39,19 @@
   }
   a { color: var(--wine); }
   .back { display: inline-block; margin-top: 40px; font-size: 13px; }
+  .song-card {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px 18px; margin-bottom: 12px;
+  }
+  .song-title { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+  .song-sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 6px; }
+  .song-meta { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 8px; }
+  .song-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+  .tag {
+    font-size: 11px; background: var(--wine-soft); color: var(--wine);
+    padding: 3px 10px; border-radius: 20px; font-weight: 600;
+  }
+  .song-note { font-size: 11.5px; color: var(--ink-soft); border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -88,6 +101,32 @@
     </div>
   </div>
 
+  <h2>こんな風に記録できます(イメージ)</h2>
+  <p>実際のアプリ画面のイメージです。曲名だけでなく、演奏動画や作品の背景まで一緒に残せます。</p>
+
+  <div class="song-card">
+    <div class="song-title">海よ</div>
+    <div class="song-sub">混声合唱とピアノのための「水のいのち」より</div>
+    <div class="song-meta">作詩: 高野喜久雄　作曲: 高田三郎　1964年</div>
+    <div class="song-tags">
+      <span class="tag">混声四部</span><span class="tag">ピアノ</span><span class="tag">日本語</span>
+    </div>
+    <div class="song-note">歌った記録: 2024年 定期演奏会にて演奏</div>
+  </div>
+
+  <div class="song-card">
+    <div class="song-title">大地讃頌</div>
+    <div class="song-sub">混声合唱のためのカンタータ「土の歌」より</div>
+    <div class="song-meta">作詩: 大木惇夫　作曲: 佐藤眞　1962年</div>
+    <div class="song-tags">
+      <span class="tag">混声四部</span><span class="tag">ピアノ</span><span class="tag">好き</span>
+    </div>
+  </div>
+
+  <p style="font-size:12.5px;color:var(--ink-soft);">
+    ※上記はアプリのイメージを伝えるためのサンプル表示です。実際の登録内容ではありません。
+  </p>
+
   <h2>誰のためのアプリ?</h2>
   <ul>
     <li>学生時代から合唱を続けていて、歌ってきた曲を記録に残したい方</li>
@@ -104,8 +143,9 @@
 
   <h2>プライバシーについて</h2>
   <p>
-    曲データは運営者のサーバーには保存されず、利用者の端末内および利用者ご本人のGoogleドライブに
-    のみ保存されます。詳しくは<a href="./privacy.html">プライバシーポリシー</a>をご覧ください。
+    曲データは運営者のサーバーには保存されず、利用者の端末内および利用者ご本人のGoogleドライブの
+    非公開領域にのみ保存されます。詳しくは<a href="./privacy.html">プライバシーポリシー</a>、
+    ご利用条件は<a href="./terms.html">利用規約</a>をご覧ください。
   </p>
 
   <a class="cta" href="./index.html">うたコレを使ってみる →</a>
