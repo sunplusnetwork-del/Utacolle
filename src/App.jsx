@@ -52,6 +52,15 @@ async function bumpTodayAdViewCount() {
   return count;
 }
 
+// テーマ変更: 1回目は無料、2回目以降は毎回短い広告(10秒)を挟む。曲登録の広告カウントとは別管理。
+const THEME_CHANGE_COUNT_KEY = 'chorusdb:theme-change-count';
+async function bumpThemeChangeCount() {
+  const current = (await idbGet(THEME_CHANGE_COUNT_KEY)) || 0;
+  const next = current + 1;
+  await idbSet(THEME_CHANGE_COUNT_KEY, next);
+  return next;
+}
+
 /* ---- IndexedDBストレージ層 ----
    Claude環境専用のwindow.storageではなく、ブラウザ標準のIndexedDBを直接使用。
    将来このコードをそのまま自分のサーバー/GitHub Pages等へ持ち出しても動作する。
@@ -255,16 +264,64 @@ const TAG_PRESETS = ['歌ったことある', '歌いたい', '好き', '練習�
 
 const THEME_STORAGE_KEY = 'theme';
 const THEMES = [
-  { id: 'wine', name: 'ワイン(標準)', paper: '#F3EEE1', ink: '#241F1B', inkSoft: '#6B6154', wine: '#7A2E2E', wineSoft: '#F1E1DD', gold: '#B08D57', goldSoft: '#F1E8D6', sage: '#5F6F4E', sageSoft: '#E7ECDD', line: '#DED5C0' },
-  { id: 'indigo', name: '藍', paper: '#EFF1F0', ink: '#1B2430', inkSoft: '#5C6670', wine: '#2B4C6F', wineSoft: '#DCE6EE', gold: '#9C7C42', goldSoft: '#EFE6D2', sage: '#3F6656', sageSoft: '#DCEAE3', line: '#D6DAD8' },
-  { id: 'sakura', name: '桜', paper: '#FBF1F0', ink: '#3A2A2C', inkSoft: '#8A6E70', wine: '#B95C6B', wineSoft: '#F6DEE1', gold: '#C08A4E', goldSoft: '#F3E5CF', sage: '#6E8A72', sageSoft: '#E4EEE2', line: '#EBD9D6' },
-  { id: 'matcha', name: '抹茶', paper: '#F1F3E9', ink: '#25301F', inkSoft: '#5D6B52', wine: '#4F6B3A', wineSoft: '#DCE8CE', gold: '#9C8A3E', goldSoft: '#EDE7CB', sage: '#3E6B55', sageSoft: '#D8EBE0', line: '#DBE2C9' },
-  { id: 'sumi', name: '墨', paper: '#EDEDEA', ink: '#1B1B1B', inkSoft: '#5A5A58', wine: '#3B3B3B', wineSoft: '#DADADA', gold: '#8C7A4C', goldSoft: '#E7E1CE', sage: '#4B5A52', sageSoft: '#DEE5E1', line: '#D4D3CE' },
-  { id: 'sunset', name: '夕焼け', paper: '#FBEDE0', ink: '#3A2416', inkSoft: '#8A6A50', wine: '#C1613A', wineSoft: '#F5DCC9', gold: '#C99A3F', goldSoft: '#F3E6C6', sage: '#78735A', sageSoft: '#EAE6D6', line: '#EBD8C4' },
-  { id: 'umi', name: '海', paper: '#EAF1F2', ink: '#12262B', inkSoft: '#4F6C72', wine: '#1F6E7A', wineSoft: '#D6E9EB', gold: '#9C8341', goldSoft: '#EBE4CB', sage: '#3A6E63', sageSoft: '#D9EAE5', line: '#D2E0E1' },
-  { id: 'kohaku', name: '琥珀', paper: '#F6EEDD', ink: '#3A2C15', inkSoft: '#8C7A54', wine: '#A9722C', wineSoft: '#F0DDBB', gold: '#C9A03F', goldSoft: '#F3E8C8', sage: '#6E7A46', sageSoft: '#E6EAD4', line: '#E9DCBF' },
-  { id: 'budou', name: '葡萄', paper: '#F0EBF1', ink: '#2A1F30', inkSoft: '#6E5F76', wine: '#6A3E7A', wineSoft: '#E8DCEC', gold: '#A98650', goldSoft: '#EEE4CF', sage: '#5A6E5E', sageSoft: '#DEE8DF', line: '#DFD5E1' },
-  { id: 'shironeri', name: '白練', paper: '#F7F7F5', ink: '#26262A', inkSoft: '#6C6C72', wine: '#54595F', wineSoft: '#E3E5E7', gold: '#A48F5E', goldSoft: '#EFE9D6', sage: '#5A6B5E', sageSoft: '#E1E9E2', line: '#DFDFDC' },
+  { id: 'wine', name: 'ワイン(標準)', category: 'classic-wa', paper: '#F3EEE1', ink: '#241F1B', inkSoft: '#6B6154', wine: '#7A2E2E', wineSoft: '#F1E1DD', gold: '#B08D57', goldSoft: '#F1E8D6', sage: '#5F6F4E', sageSoft: '#E7ECDD', line: '#DED5C0' },
+  { id: 'indigo', name: '藍', category: 'classic-wa', paper: '#EFF1F0', ink: '#1B2430', inkSoft: '#5C6670', wine: '#2B4C6F', wineSoft: '#DCE6EE', gold: '#9C7C42', goldSoft: '#EFE6D2', sage: '#3F6656', sageSoft: '#DCEAE3', line: '#D6DAD8' },
+  { id: 'sakura', name: '桜', category: 'classic-wa', paper: '#FBF1F0', ink: '#3A2A2C', inkSoft: '#8A6E70', wine: '#B95C6B', wineSoft: '#F6DEE1', gold: '#C08A4E', goldSoft: '#F3E5CF', sage: '#6E8A72', sageSoft: '#E4EEE2', line: '#EBD9D6' },
+  { id: 'matcha', name: '抹茶', category: 'classic-wa', paper: '#F1F3E9', ink: '#25301F', inkSoft: '#5D6B52', wine: '#4F6B3A', wineSoft: '#DCE8CE', gold: '#9C8A3E', goldSoft: '#EDE7CB', sage: '#3E6B55', sageSoft: '#D8EBE0', line: '#DBE2C9' },
+  { id: 'sumi', name: '墨', category: 'classic-wa', paper: '#EDEDEA', ink: '#1B1B1B', inkSoft: '#5A5A58', wine: '#3B3B3B', wineSoft: '#DADADA', gold: '#8C7A4C', goldSoft: '#E7E1CE', sage: '#4B5A52', sageSoft: '#DEE5E1', line: '#D4D3CE' },
+  { id: 'sunset', name: '夕焼け', category: 'classic-wa', paper: '#FBEDE0', ink: '#3A2416', inkSoft: '#8A6A50', wine: '#C1613A', wineSoft: '#F5DCC9', gold: '#C99A3F', goldSoft: '#F3E6C6', sage: '#78735A', sageSoft: '#EAE6D6', line: '#EBD8C4' },
+  { id: 'umi', name: '海', category: 'classic-wa', paper: '#EAF1F2', ink: '#12262B', inkSoft: '#4F6C72', wine: '#1F6E7A', wineSoft: '#D6E9EB', gold: '#9C8341', goldSoft: '#EBE4CB', sage: '#3A6E63', sageSoft: '#D9EAE5', line: '#D2E0E1' },
+  { id: 'kohaku', name: '琥珀', category: 'classic-wa', paper: '#F6EEDD', ink: '#3A2C15', inkSoft: '#8C7A54', wine: '#A9722C', wineSoft: '#F0DDBB', gold: '#C9A03F', goldSoft: '#F3E8C8', sage: '#6E7A46', sageSoft: '#E6EAD4', line: '#E9DCBF' },
+  { id: 'budou', name: '葡萄', category: 'classic-wa', paper: '#F0EBF1', ink: '#2A1F30', inkSoft: '#6E5F76', wine: '#6A3E7A', wineSoft: '#E8DCEC', gold: '#A98650', goldSoft: '#EEE4CF', sage: '#5A6E5E', sageSoft: '#DEE8DF', line: '#DFD5E1' },
+  { id: 'shironeri', name: '白練', category: 'classic-wa', paper: '#F7F7F5', ink: '#26262A', inkSoft: '#6C6C72', wine: '#54595F', wineSoft: '#E3E5E7', gold: '#A48F5E', goldSoft: '#EFE9D6', sage: '#5A6B5E', sageSoft: '#E1E9E2', line: '#DFDFDC' },
+  { id: 'pop-pink', name: 'バブルガム', category: 'pop', paper: '#F7EEF2', ink: '#351D29', inkSoft: '#895870', wine: '#E6338C', wineSoft: '#F0DBE6', gold: '#D56144', goldSoft: '#EEE0DD', sage: '#4ACFA2', sageSoft: '#DEEDE8', line: '#DED3D9' },
+  { id: 'pop-cyan', name: 'ミントソーダ', category: 'pop', paper: '#EEF7F6', ink: '#1D3533', inkSoft: '#588985', wine: '#20B6AA', wineSoft: '#DBF0EE', gold: '#396FC6', goldSoft: '#DDE3EE', sage: '#A13E36', sageSoft: '#EDDFDE', line: '#D3DEDD' },
+  { id: 'pop-lemon', name: 'レモンポップ', category: 'pop', paper: '#F7F5EE', ink: '#35311D', inkSoft: '#898158', wine: '#E2C012', wineSoft: '#F0ECDB', gold: '#87DD3C', goldSoft: '#E5EEDD', sage: '#2B2BCA', sageSoft: '#DEDEED', line: '#DEDCD3' },
+  { id: 'pop-purple', name: 'グレープキャンディ', category: 'pop', paper: '#F4EEF7', ink: '#2D1D35', inkSoft: '#785889', wine: '#9F35D4', wineSoft: '#E9DBF0', gold: '#C6539C', goldSoft: '#EEDDE8', sage: '#60BC4E', sageSoft: '#E0EDDE', line: '#DBD3DE' },
+  { id: 'pop-orange', name: 'タンジェリン', category: 'pop', paper: '#F7F1EE', ink: '#35261D', inkSoft: '#896B58', wine: '#ED701D', wineSoft: '#F0E3DB', gold: '#CDDD3C', goldSoft: '#EDEEDD', sage: '#357AD4', sageSoft: '#DEE4ED', line: '#DED8D3' },
+  { id: 'pop-sky', name: 'スカイポップ', category: 'pop', paper: '#EEF4F7', ink: '#1D2D35', inkSoft: '#587889', wine: '#2597D0', wineSoft: '#DBE9F0', gold: '#514DCB', goldSoft: '#DDDDEE', sage: '#B87A3D', sageSoft: '#EDE6DE', line: '#D3DBDE' },
+  { id: 'pop-coral', name: 'コーラルポップ', category: 'pop', paper: '#F7EFEE', ink: '#35201D', inkSoft: '#895E58', wine: '#E45944', wineSoft: '#F0DEDB', gold: '#D1BA47', goldSoft: '#EEEBDD', sage: '#59ABCF', sageSoft: '#DEE9ED', line: '#DED5D3' },
+  { id: 'pop-lime', name: 'ライムツイスト', category: 'pop', paper: '#F3F7EE', ink: '#2A351D', inkSoft: '#728958', wine: '#6AA329', wineSoft: '#E6F0DB', gold: '#43B156', goldSoft: '#DDEEE0', sage: '#713D8F', sageSoft: '#E8DEED', line: '#D9DED3' },
+  { id: 'casual-mustard', name: 'マスタードカフェ', category: 'casual', paper: '#F5F3F0', ink: '#342F23', inkSoft: '#7E7663', wine: '#BE9537', wineSoft: '#F0EADB', gold: '#95BA5E', goldSoft: '#E7EEDD', sage: '#505BA5', sageSoft: '#DEE0ED', line: '#DEDBD3' },
+  { id: 'casual-denim', name: 'デニムブルー', category: 'casual', paper: '#F0F2F5', ink: '#232B34', inkSoft: '#63707E', wine: '#4573A1', wineSoft: '#DBE6F0', gold: '#6E5DB1', goldSoft: '#E1DEED', sage: '#957E50', sageSoft: '#ECE8DF', line: '#D3D9DE' },
+  { id: 'casual-terracotta', name: 'テラコッタ', category: 'casual', paper: '#F5F1F0', ink: '#342823', inkSoft: '#7E6B63', wine: '#BF6640', wineSoft: '#F0E1DB', gold: '#B4B464', goldSoft: '#EEEEDD', sage: '#5982A6', sageSoft: '#DEE6ED', line: '#DED7D3' },
+  { id: 'casual-mint', name: 'ソフトミント', category: 'casual', paper: '#F0F5F3', ink: '#23342E', inkSoft: '#637E75', wine: '#3F836C', wineSoft: '#DDEEE8', gold: '#4C809E', goldSoft: '#DFE7EC', sage: '#7E444E', sageSoft: '#EBE0E2', line: '#D3DEDB' },
+  { id: 'casual-blush', name: 'ブラッシュピンク', category: 'casual', paper: '#F5F0F1', ink: '#342326', inkSoft: '#7E6367', wine: '#CA7281', wineSoft: '#F0DBDF', gold: '#B48F64', goldSoft: '#EEE6DD', sage: '#81BBBB', sageSoft: '#DEEDED', line: '#DED3D5' },
+  { id: 'casual-olive', name: 'オリーブカジュアル', category: 'casual', paper: '#F4F5F0', ink: '#303423', inkSoft: '#777E63', wine: '#69783A', wineSoft: '#EAEEDD', gold: '#4B9447', goldSoft: '#E0ECDF', sage: '#553E74', sageSoft: '#E5E0EB', line: '#DBDED3' },
+  { id: 'casual-lavender', name: 'ラベンダーデイズ', category: 'casual', paper: '#F2F0F5', ink: '#2A2334', inkSoft: '#6E637E', wine: '#8664B4', wineSoft: '#E4DDEE', gold: '#B464AB', goldSoft: '#ECDFEA', sage: '#87AF6A', sageSoft: '#E5EBE0', line: '#D8D3DE' },
+  { id: 'casual-sand', name: 'サンドベージュ', category: 'casual', paper: '#F5F2F0', ink: '#342C23', inkSoft: '#7E7163', wine: '#A57D50', wineSoft: '#EEE6DD', gold: '#A2B464', goldSoft: '#E9ECDF', sage: '#566C9F', sageSoft: '#E0E3EB', line: '#DED9D3' },
+  { id: 'classic-navy', name: 'ロイヤルネイビー', category: 'classic-western', paper: '#EEEFF2', ink: '#191E29', inkSoft: '#5D6A83', wine: '#203A6F', wineSoft: '#DBE2F0', gold: '#523781', goldSoft: '#E3DDEE', sage: '#60582E', sageSoft: '#EDEBDE', line: '#D3D7DE' },
+  { id: 'classic-bordeaux', name: 'ボルドー', category: 'classic-western', paper: '#F2EEEE', ink: '#29191C', inkSoft: '#835D63', wine: '#772230', wineSoft: '#F0DBDF', gold: '#88633A', goldSoft: '#EEE6DD', sage: '#326767', sageSoft: '#DEEDED', line: '#DED3D5' },
+  { id: 'classic-emerald', name: 'エメラルド', category: 'classic-western', paper: '#EEF2F0', ink: '#192923', inkSoft: '#5D8373', wine: '#216348', wineSoft: '#DBF0E7', gold: '#386475', goldSoft: '#DDE9EE', sage: '#562E38', sageSoft: '#EDDEE2', line: '#D3DEDA' },
+  { id: 'classic-plum', name: 'プラム', category: 'classic-western', paper: '#F2EEF2', ink: '#291929', inkSoft: '#835D83', wine: '#6B2E6B', wineSoft: '#F0DBF0', gold: '#833F53', goldSoft: '#EDDEE2', sage: '#36633D', sageSoft: '#DFECE1', line: '#DED3DE' },
+  { id: 'classic-charcoal', name: 'チャコール&ゴールド', category: 'classic-western', paper: '#F2F0EE', ink: '#292419', inkSoft: '#83775D', wine: '#53462D', wineSoft: '#EDE8DE', gold: '#5C7237', goldSoft: '#E7EBE0', sage: '#2D3353', sageSoft: '#E2E3E9', line: '#DEDBD3' },
+  { id: 'classic-teal', name: 'ディープティール', category: 'classic-western', paper: '#EEF1F2', ink: '#192729', inkSoft: '#5D7D83', wine: '#1C545F', wineSoft: '#DBECF0', gold: '#313A72', goldSoft: '#DDDFEE', sage: '#533628', sageSoft: '#EDE3DE', line: '#D3DCDE' },
+  { id: 'classic-forest', name: 'フォレストグリーン', category: 'classic-western', paper: '#EEF2EF', ink: '#19291E', inkSoft: '#5D836A', wine: '#225934', wineSoft: '#DBF0E2', gold: '#356C6E', goldSoft: '#DDEEEE', sage: '#502B3D', sageSoft: '#EDDEE6', line: '#D3DED7' },
+  { id: 'classic-burgundy', name: 'バーガンディ', category: 'classic-western', paper: '#F2EEEE', ink: '#291A19', inkSoft: '#83605D', wine: '#6B2A24', wineSoft: '#F0DDDB', gold: '#7C6E3C', goldSoft: '#EEEBDD', sage: '#32525D', sageSoft: '#DEE9ED', line: '#DED4D3' },
+  { id: 'ethnic-turmeric', name: 'ターメリック', category: 'ethnic', paper: '#F2EFE9', ink: '#322B1B', inkSoft: '#897A58', wine: '#CD981D', wineSoft: '#F0EADB', gold: '#98D043', goldSoft: '#E7EEDD', sage: '#3546B6', sageSoft: '#DEE0ED', line: '#DEDBD3' },
+  { id: 'ethnic-indigo', name: 'インディゴ染め', category: 'ethnic', paper: '#E9EBF2', ink: '#1B2132', inkSoft: '#586489', wine: '#263973', wineSoft: '#DBE0F0', gold: '#5E3F83', goldSoft: '#E5DDEE', sage: '#636036', sageSoft: '#EDECDE', line: '#D3D6DE' },
+  { id: 'ethnic-henna', name: 'ヘナ', category: 'ethnic', paper: '#F2EBE9', ink: '#32211B', inkSoft: '#896458', wine: '#9B4427', wineSoft: '#F0E0DB', gold: '#AAA541', goldSoft: '#EEEEDD', sage: '#3A6788', sageSoft: '#DEE7ED', line: '#DED6D3' },
+  { id: 'ethnic-clay', name: '赤土', category: 'ethnic', paper: '#F2ECE9', ink: '#32221B', inkSoft: '#896858', wine: '#A65730', wineSoft: '#F0E2DB', gold: '#AFB24D', goldSoft: '#EEEEDD', sage: '#466B91', sageSoft: '#DEE6ED', line: '#DED7D3' },
+  { id: 'ethnic-saffron', name: 'サフラン', category: 'ethnic', paper: '#F2EEE9', ink: '#32281B', inkSoft: '#897358', wine: '#E68D19', wineSoft: '#F0E7DB', gold: '#AFD742', goldSoft: '#EAEEDD', sage: '#335CCC', sageSoft: '#DEE2ED', line: '#DED9D3' },
+  { id: 'ethnic-brick', name: 'ブリックレッド', category: 'ethnic', paper: '#F2EAE9', ink: '#321F1B', inkSoft: '#896058', wine: '#963D2C', wineSoft: '#F0DFDB', gold: '#A49846', goldSoft: '#EEECDD', sage: '#3F6C83', sageSoft: '#DEE8ED', line: '#DED5D3' },
+  { id: 'ethnic-ochre', name: 'オーカー', category: 'ethnic', paper: '#F2EEE9', ink: '#32291B', inkSoft: '#897758', wine: '#A37629', wineSoft: '#F0E8DB', gold: '#8DB143', goldSoft: '#E8EEDD', sage: '#3D4E8F', sageSoft: '#DEE1ED', line: '#DEDAD3' },
+  { id: 'ethnic-batik', name: 'バティック藍', category: 'ethnic', paper: '#E9EEF2', ink: '#1B2832', inkSoft: '#587489', wine: '#274D68', wineSoft: '#DBE7F0', gold: '#433C7C', goldSoft: '#DFDDEE', sage: '#5D4B32', sageSoft: '#EDE7DE', line: '#D3DADE' },
+  { id: 'vivid-red', name: 'プライマリーレッド', category: 'vivid', paper: '#F6F3F3', ink: '#2E1919', inkSoft: '#895858', wine: '#E21212', wineSoft: '#F0DBDB', gold: '#DDAC3C', goldSoft: '#EEE9DD', sage: '#2BAFCA', sageSoft: '#DEEBED', line: '#DED3D3' },
+  { id: 'vivid-blue', name: 'プライマリーブルー', category: 'vivid', paper: '#F3F5F6', ink: '#19222E', inkSoft: '#586C89', wine: '#1269E2', wineSoft: '#DBE4F0', gold: '#693CDD', goldSoft: '#E2DDEE', sage: '#CAA22B', sageSoft: '#EDE9DE', line: '#D3D8DE' },
+  { id: 'vivid-yellow', name: 'プライマリーイエロー', category: 'vivid', paper: '#F6F6F3', ink: '#2E2A19', inkSoft: '#897F58', wine: '#F9C806', wineSoft: '#F0ECDB', gold: '#8CE830', goldSoft: '#E6EEDD', sage: '#2026DF', sageSoft: '#DEDEED', line: '#DEDCD3' },
+  { id: 'vivid-green', name: 'プライマリーグリーン', category: 'vivid', paper: '#F3F6F4', ink: '#192E1D', inkSoft: '#588960', wine: '#1DA534', wineSoft: '#DBF0DF', gold: '#35B6A5', goldSoft: '#DDEEEC', sage: '#913071', sageSoft: '#EDDEE8', line: '#D3DED5' },
+  { id: 'vivid-orange', name: 'ビビッドオレンジ', category: 'vivid', paper: '#F6F5F3', ink: '#2E2319', inkSoft: '#896F58', wine: '#F2780D', wineSoft: '#F0E5DB', gold: '#C6E236', goldSoft: '#EBEEDD', sage: '#2668D9', sageSoft: '#DEE3ED', line: '#DED8D3' },
+  { id: 'vivid-purple', name: 'ビビッドパープル', category: 'vivid', paper: '#F5F3F6', ink: '#24192E', inkSoft: '#705889', wine: '#7322C3', wineSoft: '#E6DBF0', gold: '#C945AF', goldSoft: '#EEDDEB', sage: '#60AC39', sageSoft: '#E3EDDE', line: '#D9D3DE' },
+  { id: 'vivid-magenta', name: 'ビビッドマゼンタ', category: 'vivid', paper: '#F6F3F5', ink: '#2E1927', inkSoft: '#895878', wine: '#DC189B', wineSoft: '#F0DBE9', gold: '#D74742', goldSoft: '#EEDDDD', sage: '#31C47A', sageSoft: '#DEEDE6', line: '#DED3DB' },
+  { id: 'vivid-turquoise', name: 'ビビッドターコイズ', category: 'vivid', paper: '#F3F6F6', ink: '#192E2E', inkSoft: '#588989', wine: '#18AAAA', wineSoft: '#DBF0F0', gold: '#2F59BC', goldSoft: '#DDE2EE', sage: '#963D2C', sageSoft: '#EDE0DE', line: '#D3DEDE' },
+];
+const THEME_CATEGORIES = [
+  { id: 'classic-wa', label: '和・クラシカル' },
+  { id: 'pop', label: 'POP' },
+  { id: 'casual', label: 'カジュアル' },
+  { id: 'classic-western', label: 'クラシカル(洋)' },
+  { id: 'ethnic', label: 'エスニック' },
+  { id: 'vivid', label: '原色・ビビッド' },
 ];
 function getTheme(id) {
   return THEMES.find((t) => t.id === id) || THEMES[0];
@@ -2245,7 +2302,7 @@ function TagCycleChip({ name, state, onClick }) {
   );
 }
 
-function SongFilterBar({ filters, setFilters, sort, setSort, songs = [] }) {
+function SongFilterBar({ filters, setFilters, sort, setSort, songs = [], onShuffle }) {
   const [expanded, setExpanded] = useState(false);
   const setField = (k) => (v) => setFilters((prev) => ({ ...prev, [k]: v }));
   const active = isSongFilterActive(filters);
@@ -2284,6 +2341,11 @@ function SongFilterBar({ filters, setFilters, sort, setSort, songs = [] }) {
             <option value="oldest">追加日が古い順</option>
             <option value="updated">更新日が新しい順</option>
           </select>
+        )}
+        {sort === 'random' && onShuffle && (
+          <Button variant="quiet" onClick={onShuffle}>
+            <Shuffle size={13} /> シャッフル
+          </Button>
         )}
         <Button variant={expanded ? 'default' : 'quiet'} onClick={() => setExpanded((v) => !v)}>
           詳細フィルタ {active && <span style={{
@@ -2513,7 +2575,22 @@ function ImageCropModal({ file, onCancel, onConfirm }) {
 function ProfileForm({ initial, existingIds, onSave, onCancel, isNew }) {
   const [id] = useState(() => initial?.userId || genUserId(existingIds));
   const [name, setName] = useState(initial?.displayName || '');
+  const [avatarDataUrl, setAvatarDataUrl] = useState(initial?.avatarDataUrl || '');
   const [error, setError] = useState('');
+  const [imgError, setImgError] = useState('');
+  const [cropFile, setCropFile] = useState(null);
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImgError('画像ファイルを選んでください。');
+      return;
+    }
+    setImgError('');
+    setCropFile(file);
+  };
 
   const submit = () => {
     const trimmedName = name.trim();
@@ -2524,9 +2601,9 @@ function ProfileForm({ initial, existingIds, onSave, onCancel, isNew }) {
     onSave({
       userId: id,
       displayName: trimmedName,
+      avatarDataUrl,
       // 以下はVer.1では非表示の項目(ソーシャル機能凍結中)。既存値があれば保持し、Ver.2で復活しやすくする
       bio: initial?.bio || '',
-      avatarDataUrl: initial?.avatarDataUrl || '',
       birthDate: initial?.birthDate || '',
       ageDisplay: initial?.ageDisplay || 'hidden',
     });
@@ -2535,11 +2612,39 @@ function ProfileForm({ initial, existingIds, onSave, onCancel, isNew }) {
   return (
     <div>
       <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>
-        {isNew ? 'プロフィールを作成' : '表示名を編集'}
+        {isNew ? 'プロフィールを作成' : 'プロフィールを編集'}
       </h2>
       <p style={{ fontSize: 13, color: 'var(--ink-soft)', margin: '0 0 18px' }}>
-        {isNew ? '曲データの持ち主として使う名前です。Googleドライブでの保存・共有時にも使われます。' : '表示名を更新できます。'}
+        {isNew ? '曲データの持ち主として使う名前です。Googleドライブでの保存・共有時にも使われます。' : '表示名・画像を更新できます。'}
       </p>
+
+      <Field label="プロフィール画像">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <Avatar name={name} size={56} src={avatarDataUrl} />
+          <div>
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <Button variant="quiet" style={{ pointerEvents: 'none' }}>
+                <Plus size={13} /> 画像をアップロード
+              </Button>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFile}
+                style={{
+                  position: 'absolute', inset: 0, width: '100%', height: '100%',
+                  opacity: 0, cursor: 'pointer',
+                }}
+              />
+            </div>
+            {avatarDataUrl && (
+              <Button variant="quiet" onClick={() => setAvatarDataUrl('')} style={{ marginLeft: 6 }}>
+                <X size={13} /> 削除
+              </Button>
+            )}
+            {imgError && <p style={{ color: '#9C3B2E', fontSize: 11.5, margin: '6px 0 0' }}>{imgError}</p>}
+          </div>
+        </div>
+      </Field>
 
       <Field label="表示名" required>
         <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="例: とある合唱人" />
@@ -2552,6 +2657,14 @@ function ProfileForm({ initial, existingIds, onSave, onCancel, isNew }) {
           <Check size={14} /> 保存する
         </Button>
       </div>
+
+      {cropFile && (
+        <ImageCropModal
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onConfirm={(dataUrl) => { setAvatarDataUrl(dataUrl); setCropFile(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -2840,6 +2953,21 @@ export default function App() {
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [profileFormMode, setProfileFormMode] = useState('new');
   const [showSwitcher, setShowSwitcher] = useState(false);
+  const switcherRef = useRef(null);
+  useEffect(() => {
+    if (!showSwitcher) return;
+    const handleOutside = (e) => {
+      if (switcherRef.current && !switcherRef.current.contains(e.target)) {
+        setShowSwitcher(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [showSwitcher]);
   const [skipGoogleChoice, setSkipGoogleChoice] = useState(false);
   const [googleSignedIn, setGoogleSignedIn] = useState(false);
   const [googleAccount, setGoogleAccount] = useState(null); // {name, email, picture}
@@ -2881,10 +3009,10 @@ export default function App() {
     setSongModal(draft);
   };
   const [adGate, setAdGate] = useState(null); // { seconds, label, onDone } | null
-  const runWithAdGate = (seconds, label, action) => {
+  const runWithAdGate = (seconds, label, action, countsTowardDailyCap = true) => {
     setAdGate({
       seconds, label,
-      onDone: async () => { setAdGate(null); await bumpTodayAdViewCount(); action(); },
+      onDone: async () => { setAdGate(null); if (countsTowardDailyCap) await bumpTodayAdViewCount(); action(); },
     });
   };
   const startNewSongRegistration = async () => {
@@ -2913,9 +3041,27 @@ export default function App() {
   const [dbFilters, setDbFilters] = useState(emptySongFilters());
   const [dbSort, setDbSort] = useState('random');
   const [groupBySuite, setGroupBySuite] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(10);
+  const loadMoreRef = useRef(null);
   const [viewFilters, setViewFilters] = useState(emptySongFilters());
   const [viewSort, setViewSort] = useState('random');
-  const [randomSeed] = useState(() => Math.random().toString(36).slice(2));
+  const [randomSeed, setRandomSeed] = useState(() => Math.random().toString(36).slice(2));
+  const shuffleSongs = () => setRandomSeed(Math.random().toString(36).slice(2));
+  useEffect(() => {
+    setVisibleCount(10);
+  }, [dbFilters, dbSort, groupBySuite, randomSeed]);
+  useEffect(() => {
+    if (view !== 'mydb') return;
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleCount((v) => v + 10);
+      }
+    }, { rootMargin: '300px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [view, visibleCount]);
   const [songDetail, setSongDetail] = useState(null);
   const [followListMode, setFollowListMode] = useState(null);
   const [unfollowConfirm, setUnfollowConfirm] = useState(null);
@@ -2967,9 +3113,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meId]);
 
-  const changeTheme = (id) => {
-    setThemeId(id);
-    saveThemeId(id);
+  const changeTheme = async (id) => {
+    const applyChange = () => { setThemeId(id); saveThemeId(id); };
+    const count = await bumpThemeChangeCount();
+    if (count >= 2) {
+      runWithAdGate(10, 'テーマを変更する前に', applyChange, false);
+    } else {
+      applyChange();
+    }
   };
 
   /* ---- Drive同期 ----
@@ -3118,7 +3269,9 @@ export default function App() {
   const me = meId ? data.users[meId] : null;
   const allUserIds = Object.keys(data.users);
   const mySongsRaw = Object.values(data.songs).filter((s) => s.ownerId === meId);
-  const mySongs = sortSongs(filterSongs(mySongsRaw, dbFilters), dbSort, randomSeed);
+  const mySongsAll = sortSongs(filterSongs(mySongsRaw, dbFilters), dbSort, randomSeed);
+  const mySongs = mySongsAll.slice(0, visibleCount);
+  const hasMoreMySongs = mySongsAll.length > visibleCount;
   const suiteGroups = useMemo(() => {
     if (!groupBySuite) return null;
     const groups = [];
@@ -3634,11 +3787,11 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src={appIconUrl} alt="うたコレ" style={{ width: 38, height: 38, borderRadius: 9, objectFit: 'cover' }} />
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 19, lineHeight: 1.1 }}>うたコレ</div>
-            <div style={{ fontSize: 11, color: 'var(--ink-soft)', letterSpacing: 0.5 }}>UTA-COLLE</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 19, lineHeight: 1.3, margin: 0, padding: 0 }}>うたコレ</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-soft)', lineHeight: 1.3, margin: 0, padding: 0 }}>UTA-COLLE</div>
           </div>
         </div>
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }} ref={switcherRef}>
           <button onClick={() => setShowSwitcher((v) => !v)} style={{
             display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--line)',
             borderRadius: 20, padding: '4px 10px 4px 4px', cursor: 'pointer',
@@ -3652,6 +3805,13 @@ export default function App() {
               position: 'absolute', right: 0, top: 42, background: '#fff', border: '1px solid var(--line)',
               borderRadius: 10, width: 250, boxShadow: '0 10px 30px rgba(0,0,0,.12)', zIndex: 50, overflow: 'hidden',
             }}>
+              <button onClick={() => { setShowSwitcher(false); setView('mypage'); }} style={{
+                display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 12px',
+                background: view === 'mypage' ? 'var(--paper)' : 'transparent', border: 'none',
+                borderBottom: '1px solid var(--line)', cursor: 'pointer', textAlign: 'left', fontSize: 13, fontWeight: 600,
+              }}>
+                <User size={14} /> マイページ
+              </button>
               {googleConfigured && (
                 <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--line)' }}>
                   {googleSignedIn ? (
@@ -3721,8 +3881,7 @@ export default function App() {
 
       {/* ナビ */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 22, borderBottom: '1px solid var(--line)' }}>
-        <NavTab active={view === 'mypage'} onClick={() => setView('mypage')} icon={<User size={15} />} label="マイページ" />
-        <NavTab active={view === 'mydb'} onClick={() => setView('mydb')} icon={<Ticket size={15} />} label="マイDB" />
+        <NavTab active={view === 'mydb'} onClick={() => setView('mydb')} icon={<Ticket size={15} />} label="コレクション" />
         {SOCIAL_FEATURES_ENABLED && (
           <NavTab active={view === 'discover'} onClick={() => { setView('discover'); setViewedUserId(null); }} icon={<Users size={15} />} label="さがす" />
         )}
@@ -3860,26 +4019,33 @@ export default function App() {
             {themePanelOpen ? <ChevronUp size={16} color="var(--ink-soft)" /> : <ChevronDown size={16} color="var(--ink-soft)" />}
           </button>
           {themePanelOpen && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 10, marginTop: 16 }}>
-              {THEMES.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => changeTheme(t.id)}
-                  title={t.name}
-                  style={{
-                    cursor: 'pointer', borderRadius: 10, padding: '10px 6px 8px',
-                    border: themeId === t.id ? `2px solid ${t.wine}` : '1px solid var(--line)',
-                    background: t.paper, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: 3 }}>
-                    <span style={{ width: 14, height: 14, borderRadius: '50%', background: t.wine, display: 'inline-block' }} />
-                    <span style={{ width: 14, height: 14, borderRadius: '50%', background: t.gold, display: 'inline-block' }} />
-                    <span style={{ width: 14, height: 14, borderRadius: '50%', background: t.sage, display: 'inline-block' }} />
+            <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {THEME_CATEGORIES.map((cat) => (
+                <div key={cat.id}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', marginBottom: 8 }}>{cat.label}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 10 }}>
+                    {THEMES.filter((t) => t.category === cat.id).map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => changeTheme(t.id)}
+                        title={t.name}
+                        style={{
+                          cursor: 'pointer', borderRadius: 10, padding: '10px 6px 8px',
+                          border: themeId === t.id ? `2px solid ${t.wine}` : '1px solid var(--line)',
+                          background: t.paper, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: 3 }}>
+                          <span style={{ width: 14, height: 14, borderRadius: '50%', background: t.wine, display: 'inline-block' }} />
+                          <span style={{ width: 14, height: 14, borderRadius: '50%', background: t.gold, display: 'inline-block' }} />
+                          <span style={{ width: 14, height: 14, borderRadius: '50%', background: t.sage, display: 'inline-block' }} />
+                        </div>
+                        <span style={{ fontSize: 11, color: t.ink, fontWeight: themeId === t.id ? 700 : 500 }}>{t.name}</span>
+                        {themeId === t.id && <Check size={12} color={t.wine} />}
+                      </button>
+                    ))}
                   </div>
-                  <span style={{ fontSize: 11, color: t.ink, fontWeight: themeId === t.id ? 700 : 500 }}>{t.name}</span>
-                  {themeId === t.id && <Check size={12} color={t.wine} />}
-                </button>
+                </div>
               ))}
             </div>
           )}
@@ -3932,7 +4098,7 @@ export default function App() {
                 textDecoration: 'none',
               }}
             >
-              <FileText size={13} /> マイDBをCSVで書き出す
+              <FileText size={13} /> コレクションをCSVで書き出す
             </a>
           </div>
         </div>
@@ -3975,7 +4141,7 @@ export default function App() {
 
           {mySongsRaw.length > 0 && (
             <>
-              <SongFilterBar filters={dbFilters} setFilters={setDbFilters} sort={dbSort} setSort={setDbSort} songs={mySongsRaw} />
+              <SongFilterBar filters={dbFilters} setFilters={setDbFilters} sort={dbSort} setSort={setDbSort} songs={mySongsRaw} onShuffle={shuffleSongs} />
               <label style={{
                 display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink-soft)',
                 cursor: 'pointer', marginBottom: 14,
@@ -4034,6 +4200,12 @@ export default function App() {
                 onShare={() => setShareSong(s)}
               />
             ))
+          )}
+
+          {mySongs.length > 0 && (
+            <div ref={loadMoreRef} style={{ display: 'flex', justifyContent: 'center', padding: '14px 0' }}>
+              {hasMoreMySongs && <Loader2 size={16} className="spin" color="var(--ink-soft)" />}
+            </div>
           )}
         </div>
       )}
