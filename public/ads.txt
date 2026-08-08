@@ -1,9 +1,1 @@
-# このファイルは Google Ad Manager / AdSense の「販売者情報の確認(ads.txt)」用です。
-# Ad Managerへの申請・登録が完了すると、管理画面(Ad Manager > インベントリ > 保護設定 > ads.txt管理、
-# または AdSense > サイト > ads.txt)に、あなた専用の1行が表示されます。
-# その行をそのままこのファイルに追記し、再デプロイしてください(下の例はダミーの値です)。
-#
-# 例:
-# google.com, pub-9457584922397090, DIRECT, f08c47fec0942fa0
-#
-# 記入後は https://あなたのドメイン/ads.txt でこの内容がそのまま表示されることを確認してください。
+google.com, pub-9457584922397090, DIRECT, f08c47fec0942fa0
