@@ -916,7 +916,7 @@ function encodeQR(text, ecLevelLetter = 'M') {
    Ver.2でこの値をtrueに戻せば復活する。 */
 const SOCIAL_FEATURES_ENABLED = false;
 
-const SHARE_URL_BASE = 'https://chorusdb.app/import';
+const SHARE_URL_BASE = 'https://sunplusnetwork-del.github.io/Utacolle/';
 const SHARE_QR_SAFE_LIMIT = 1200; // 文字数。これを超えるとQRの読み取り信頼性が下がる
 
 function songDupKey(s) {
@@ -1728,21 +1728,20 @@ function Toast({ text }) {
 }
 
 /* ---- 広告ゲート ----
-   Google Publisher Tag(GPT)のテスト用広告ユニット(/6355419/Travel)を表示する。
-   実際の収益化用ユニットに差し替える場合は、GPT_AD_UNIT_PATHを自分のAd Manager上の
-   広告ユニットパスに書き換える(詳細はDEPLOY.md参照)。
-   GPTの通常のバナー広告自体には「○秒見るまで閉じられない」という機能は無いため、
-   指定秒数が経過するまで「続ける」を押せなくする制御はこちら側のタイマーで行っている。 */
-const GPT_AD_UNIT_PATH = '/6355419/Travel'; // TODO: 本番運用時は自分のAd Manager広告ユニットパスに置き換える
-const GPT_AD_SIZE = [300, 250];
-let gptServicesEnabled = false;
-let gptSlotCounter = 0;
+   実際のGoogle AdSense広告を、画面いっぱいに表示する。
+   AdSenseは審査・広告ユニット作成が完了するまで広告を配信しないため、それまでは
+   広告エリアが空欄のまま表示される(正常な状態)。
+   広告ユニット作成後は、下のADSENSE_AD_SLOTを実際のスロットIDに置き換える(DEPLOY.md参照)。
+   AdSense自体には「○秒見るまで閉じられない」機能は無いため、指定秒数が経過するまで
+   「続ける」を押せなくする制御はこちら側のタイマーで行っている。 */
+const ADSENSE_CLIENT = 'ca-pub-9457584922397090';
+const ADSENSE_AD_SLOT = 'YOUR_AD_SLOT_ID'; // TODO: AdSenseで広告ユニットを作成後、そのスロットIDに置き換える
+let adSlotCounter = 0;
 
-function AdGateModal({ seconds, onComplete, label }) {
+function AdGateModal({ seconds, onComplete, onCancel, label }) {
   const [remaining, setRemaining] = useState(seconds);
-  const [divId] = useState(() => `banner-ad-${++gptSlotCounter}`);
-  const [adFailed, setAdFailed] = useState(false);
-  const slotRef = useRef(null);
+  const [slotKey] = useState(() => ++adSlotCounter);
+  const adConfigured = ADSENSE_AD_SLOT && ADSENSE_AD_SLOT !== 'YOUR_AD_SLOT_ID';
 
   useEffect(() => {
     if (remaining <= 0) return;
@@ -1752,54 +1751,57 @@ function AdGateModal({ seconds, onComplete, label }) {
   }, [remaining]);
 
   useEffect(() => {
-    if (!window.googletag) { setAdFailed(true); return; }
-    window.googletag.cmd.push(() => {
-      const slot = window.googletag.defineSlot(GPT_AD_UNIT_PATH, GPT_AD_SIZE, divId);
-      if (!slot) { setAdFailed(true); return; }
-      slot.addService(window.googletag.pubads());
-      if (!gptServicesEnabled) {
-        window.googletag.pubads().enableSingleRequest();
-        window.googletag.enableServices();
-        gptServicesEnabled = true;
-      }
-      window.googletag.display(divId);
-      slotRef.current = slot;
-    });
-    return () => {
-      if (window.googletag && slotRef.current) {
-        try { window.googletag.destroySlots([slotRef.current]); } catch (e) { /* noop */ }
-      }
-    };
+    if (!adConfigured) return;
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch (e) { /* noop: 審査前・広告在庫が無い場合などは失敗することがある */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [divId]);
+  }, [slotKey]);
 
   const done = remaining <= 0;
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(20,16,12,0.72)', zIndex: 200,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      position: 'fixed', inset: 0, background: '#000', zIndex: 200,
+      display: 'flex', flexDirection: 'column',
     }}>
-      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 420, padding: 22, textAlign: 'center' }}>
-        <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 10 }}>{label || '広告'}</div>
-        <div style={{
-          width: '100%', minHeight: 250, background: '#1b1b1b', borderRadius: 10,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          color: '#9a9a9a', fontSize: 12.5, marginBottom: 16, gap: 6, overflow: 'hidden',
-        }}>
-          <div id={divId} style={{ width: GPT_AD_SIZE[0], height: GPT_AD_SIZE[1] }} />
-          {adFailed && (
-            <>
-              <Film size={22} />
-              広告を読み込めませんでした
-            </>
-          )}
-        </div>
-        <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 16px' }}>
-          {done ? '広告の再生が終わりました。' : `広告表示中です。あと${remaining}秒でスキップできます。`}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {adConfigured ? (
+          <ins
+            key={slotKey}
+            className="adsbygoogle"
+            style={{ display: 'block', width: '100%', height: '100%' }}
+            data-ad-client={ADSENSE_CLIENT}
+            data-ad-slot={ADSENSE_AD_SLOT}
+            data-ad-format="auto"
+            data-full-width-responsive="true"
+          />
+        ) : (
+          <div style={{ color: '#9a9a9a', fontSize: 12.5, textAlign: 'center', padding: 20 }}>
+            <Film size={26} style={{ marginBottom: 8 }} />
+            <div>広告の審査・設定が完了すると、ここに表示されます</div>
+          </div>
+        )}
+      </div>
+      <div style={{ background: '#fff', padding: '16px 20px 20px', textAlign: 'center', flexShrink: 0 }}>
+        <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 8 }}>{label || '広告'}</div>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 12px' }}>
+          {done ? '広告の表示が終わりました。' : `広告表示中です。あと${remaining}秒でスキップできます。`}
         </p>
         <Button variant="primary" disabled={!done} onClick={onComplete} style={{ width: '100%', justifyContent: 'center' }}>
           {done ? '続ける' : `${remaining}秒`}
         </Button>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            style={{
+              display: 'block', width: '100%', textAlign: 'center', marginTop: 12,
+              background: 'transparent', border: 'none', color: 'var(--ink-soft)',
+              fontSize: 12, textDecoration: 'underline', cursor: 'pointer', padding: 4,
+            }}
+          >
+            キャンセルする(この操作自体を取りやめます)
+          </button>
+        )}
       </div>
     </div>
   );
@@ -2572,7 +2574,7 @@ function ImageCropModal({ file, onCancel, onConfirm }) {
   );
 }
 
-function ProfileForm({ initial, existingIds, onSave, onCancel, isNew }) {
+function ProfileForm({ initial, existingIds, onSave, onCancel, isNew, disabled }) {
   const [id] = useState(() => initial?.userId || genUserId(existingIds));
   const [name, setName] = useState(initial?.displayName || '');
   const [avatarDataUrl, setAvatarDataUrl] = useState(initial?.avatarDataUrl || '');
@@ -2651,9 +2653,14 @@ function ProfileForm({ initial, existingIds, onSave, onCancel, isNew }) {
       </Field>
 
       {error && <p style={{ color: '#9C3B2E', fontSize: 12.5, margin: '0 0 12px' }}>{error}</p>}
+      {disabled && (
+        <p style={{ color: '#9C3B2E', fontSize: 12, margin: '0 0 12px' }}>
+          利用規約とプライバシーポリシーへの同意が必要です。
+        </p>
+      )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
         {onCancel && <Button variant="quiet" onClick={onCancel}>キャンセル</Button>}
-        <Button variant="primary" onClick={submit}>
+        <Button variant="primary" onClick={submit} disabled={disabled}>
           <Check size={14} /> 保存する
         </Button>
       </div>
@@ -2777,14 +2784,6 @@ function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
         </div>
       </Field>
 
-      <div style={{
-        background: 'var(--paper)', border: '1px dashed var(--line)', borderRadius: 8,
-        padding: '10px 12px', margin: '0 0 16px', fontSize: 11.5, color: 'var(--ink-soft)', lineHeight: 1.7,
-      }}>
-        <strong style={{ color: 'var(--ink)' }}>名前の入力について:</strong> 姓と名を分けずに1つの名前として登録します。
-        同姓同名の方が別に存在することもあるため、似た名前が既にあっても登録は制限されません。
-      </div>
-
       <NameField
         label="作詩" required
         value={d.lyricist} onChange={set('lyricist')}
@@ -2801,7 +2800,6 @@ function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
         label="編曲"
         value={d.arranger} onChange={set('arranger')}
         suggestions={arrangerSuggestions}
-        placeholder="例: 信長貴富"
       />
 
       <Field label="発表年">
@@ -2969,6 +2967,7 @@ export default function App() {
     };
   }, [showSwitcher]);
   const [skipGoogleChoice, setSkipGoogleChoice] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [googleSignedIn, setGoogleSignedIn] = useState(false);
   const [googleAccount, setGoogleAccount] = useState(null); // {name, email, picture}
   const [driveSyncStatus, setDriveSyncStatus] = useState('idle'); // idle | syncing | error
@@ -3008,11 +3007,12 @@ export default function App() {
     setSongFormKey((k) => k + 1);
     setSongModal(draft);
   };
-  const [adGate, setAdGate] = useState(null); // { seconds, label, onDone } | null
+  const [adGate, setAdGate] = useState(null); // { seconds, label, onDone, onCancel } | null
   const runWithAdGate = (seconds, label, action, countsTowardDailyCap = true) => {
     setAdGate({
       seconds, label,
       onDone: async () => { setAdGate(null); if (countsTowardDailyCap) await bumpTodayAdViewCount(); action(); },
+      onCancel: () => setAdGate(null),
     });
   };
   const startNewSongRegistration = async () => {
@@ -3165,6 +3165,26 @@ export default function App() {
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, [syncToDrive]);
+
+  /* ---- 保険: タブにフォーカスが戻った時にもデータを読み直す ----
+     別ウィンドウからの保存通知(postMessage)がブラウザによっては届かない/タイミングが
+     ずれることがあるため、フォーカス復帰時に必ず最新のIndexedDBの内容を読み直して補完する。 */
+  useEffect(() => {
+    let last = Date.now();
+    const refresh = () => {
+      const now = Date.now();
+      if (now - last < 500) return; // 短時間の連続発火を間引く
+      last = now;
+      loadData().then((fresh) => setData(fresh));
+    };
+    const onVisibility = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   /* ---- Googleログイン(任意) ----
      GOOGLE_CLIENT_IDが未設定のままの場合はログインボタン自体を出さない(空実装で壊れないように)。 */
@@ -3674,16 +3694,35 @@ export default function App() {
       <Wrap theme={currentTheme}>
         <div style={{ maxWidth: 440, margin: '40px auto', background: '#fff', borderRadius: 12, padding: 26, border: '1px solid var(--line)' }}>
           <img src={bannerUrl} alt="うたコレ" style={{ width: '100%', maxWidth: 280, display: 'block', margin: '0 auto 18px' }} />
+
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: 'var(--ink-soft)',
+            lineHeight: 1.6, marginBottom: 18, cursor: 'pointer', background: 'var(--paper)',
+            padding: '10px 12px', borderRadius: 8,
+          }}>
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={(e) => setAgreedToTerms(e.target.checked)}
+              style={{ width: 15, height: 15, marginTop: 1, flexShrink: 0 }}
+            />
+            <span>
+              <a href="./terms.html" target="_blank" rel="noreferrer">利用規約</a>と
+              <a href="./privacy.html" target="_blank" rel="noreferrer">プライバシーポリシー</a>
+              を読み、内容に同意します
+            </span>
+          </label>
+
           {showGoogleChoice ? (
             <>
               <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 6px', fontSize: 19 }}>はじめに</h2>
               <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', lineHeight: 1.7, margin: '0 0 20px' }}>
                 曲データの保存方法を選んでください。あとから設定を変えることもできます。
               </p>
-              <button onClick={signInWithGoogle} style={{
+              <button onClick={signInWithGoogle} disabled={!agreedToTerms} style={{
                 display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '14px 16px',
-                background: 'var(--wine)', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer',
-                fontSize: 14, fontWeight: 700, marginBottom: 10,
+                background: agreedToTerms ? 'var(--wine)' : '#c7bdb4', color: '#fff', border: 'none', borderRadius: 10,
+                cursor: agreedToTerms ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 700, marginBottom: 10,
               }}>
                 <UserPlus size={18} />
                 <span style={{ textAlign: 'left' }}>
@@ -3693,10 +3732,10 @@ export default function App() {
                   </div>
                 </span>
               </button>
-              <button onClick={() => setSkipGoogleChoice(true)} style={{
+              <button onClick={() => setSkipGoogleChoice(true)} disabled={!agreedToTerms} style={{
                 display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '14px 16px',
-                background: '#fff', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 10, cursor: 'pointer',
-                fontSize: 14, fontWeight: 600,
+                background: '#fff', color: agreedToTerms ? 'var(--ink)' : '#b8b0a8', border: '1px solid var(--line)', borderRadius: 10,
+                cursor: agreedToTerms ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 600,
               }}>
                 <Music2 size={18} />
                 <span style={{ textAlign: 'left' }}>
@@ -3717,7 +3756,7 @@ export default function App() {
               <style>{`.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
             </div>
           ) : (
-            <ProfileForm isNew existingIds={allUserIds} onSave={createProfile} />
+            <ProfileForm isNew existingIds={allUserIds} onSave={createProfile} disabled={!agreedToTerms} />
           )}
         </div>
         <div style={{ textAlign: 'center', marginTop: 14, display: 'flex', gap: 14, justifyContent: 'center' }}>
@@ -4425,7 +4464,7 @@ export default function App() {
       )}
 
       {adGate && (
-        <AdGateModal seconds={adGate.seconds} label={adGate.label} onComplete={adGate.onDone} />
+        <AdGateModal seconds={adGate.seconds} label={adGate.label} onComplete={adGate.onDone} onCancel={adGate.onCancel} />
       )}
 
       {sharedIncoming && (
@@ -5568,7 +5607,7 @@ function CSVImportModal({ onClose, onImport, mySongs = [] }) {
   };
 
   if (!adDone) {
-    return <AdGateModal seconds={30} label="CSVアップロードを始める前に" onComplete={() => setAdDone(true)} />;
+    return <AdGateModal seconds={30} label="CSVアップロードを始める前に" onComplete={() => setAdDone(true)} onCancel={onClose} />;
   }
 
   return (
