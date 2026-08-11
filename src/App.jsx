@@ -197,6 +197,14 @@ async function driveDownload(token, fileId) {
   return res.json();
 }
 
+async function driveDeleteFile(token, fileId) {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: 'DELETE',
+    headers: driveAuthHeader(token),
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`Driveのデータ削除に失敗しました (${res.status})`);
+}
+
 async function driveUpload(token, fileId, data) {
   const boundary = 'chorusdb_' + Math.random().toString(36).slice(2);
   const metadata = fileId ? {} : { name: DRIVE_FILE_NAME, parents: ['appDataFolder'] };
@@ -1234,16 +1242,25 @@ function seededHash(str) {
   }
   return h;
 }
+function normalizeForSort(s) {
+  // 全角英数を半角に、ひらがな/カタカナの表記ゆれを吸収し、前後の空白を除去
+  return (s || '')
+    .trim()
+    .normalize('NFKC')
+    .replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60)); // カタカナ→ひらがな
+}
 function sortSongs(songs, sortKey, randomSeed = '') {
   const list = [...songs];
   if (sortKey === 'title') {
-    // 組曲名がある場合は組曲名を優先してまとめ、組曲内は曲名順にする
+    // 組曲名がある場合は組曲名を優先してまとめ、組曲内は曲名(よみがな優先)順にする
     return list.sort((a, b) => {
-      const ak = a.suiteTitle || a.title;
-      const bk = b.suiteTitle || b.title;
-      const cmp = ak.localeCompare(bk, 'ja');
+      const ak = normalizeForSort(a.suiteTitle || a.title);
+      const bk = normalizeForSort(b.suiteTitle || b.title);
+      const cmp = ak.localeCompare(bk, 'ja', { numeric: true, sensitivity: 'base' });
       if (cmp !== 0) return cmp;
-      return a.title.localeCompare(b.title, 'ja');
+      const at = normalizeForSort(a.titleKana || a.title);
+      const bt = normalizeForSort(b.titleKana || b.title);
+      return at.localeCompare(bt, 'ja', { numeric: true, sensitivity: 'base' });
     });
   }
   if (sortKey === 'oldest') return list.sort((a, b) => a.createdAt - b.createdAt);
@@ -1323,7 +1340,7 @@ async function saveSession(session) {
 
 function emptySongDraft() {
   return {
-    title: '', suiteGenre: '', suiteTitle: '',
+    title: '', titleKana: '', suiteGenre: '', suiteTitle: '', suiteOrder: '',
     lyricist: '', composer: '', arranger: '',
     year: '', formation: '', formationOther: '', accompaniment: '',
     accompanimentOther: '', language: '', languageOther: '', videoUrl: '', scoreSource: '',
@@ -1840,6 +1857,143 @@ function fieldOrOther(val, other) {
   return val === 'その他' ? (other || 'その他') : val;
 }
 
+/* ---- 再生リスト ----
+   YouTubeの IFrame Player API(https://developers.google.com/youtube/iframe_api_reference)を使い、
+   「1曲の再生が終わった」というイベント(onStateChange, ENDED)を検知して、自動的に次の曲へ進める。 */
+function loadYouTubeIframeAPI() {
+  if (window.YT && window.YT.Player) return Promise.resolve();
+  if (window.__ytApiLoadingPromise) return window.__ytApiLoadingPromise;
+  window.__ytApiLoadingPromise = new Promise((resolve) => {
+    const prevCb = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (prevCb) prevCb(); resolve(); };
+    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    }
+  });
+  return window.__ytApiLoadingPromise;
+}
+
+function PlaylistPlayer({ songs, onClose }) {
+  const [index, setIndex] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const playerRef = useRef(null);
+  const containerRef = useRef(null);
+  const songsRef = useRef(songs);
+  songsRef.current = songs;
+
+  const playAt = (i) => {
+    const s = songsRef.current[i];
+    const vid = s ? getYoutubeVideoId(s.videoUrl) : null;
+    if (playerRef.current && playerRef.current.loadVideoById && vid) {
+      playerRef.current.loadVideoById(vid);
+    }
+  };
+  const goNext = () => {
+    setIndex((i) => {
+      const next = (i + 1) % songsRef.current.length; // 最後まで行ったら最初に戻ってループ
+      playAt(next);
+      return next;
+    });
+  };
+  const goPrev = () => {
+    setIndex((i) => {
+      const prev = (i - 1 + songsRef.current.length) % songsRef.current.length;
+      playAt(prev);
+      return prev;
+    });
+  };
+
+  useEffect(() => {
+    let destroyed = false;
+    const firstVideoId = getYoutubeVideoId(songsRef.current[0]?.videoUrl);
+    loadYouTubeIframeAPI().then(() => {
+      if (destroyed || !containerRef.current) return;
+      playerRef.current = new window.YT.Player(containerRef.current, {
+        videoId: firstVideoId,
+        playerVars: { autoplay: 1, mute: 1, playsinline: 1, rel: 0 },
+        events: {
+          onReady: () => setReady(true),
+          onStateChange: (e) => {
+            if (e.data === window.YT.PlayerState.ENDED) goNext();
+          },
+        },
+      });
+    });
+    return () => {
+      destroyed = true;
+      if (playerRef.current && playerRef.current.destroy) {
+        try { playerRef.current.destroy(); } catch (err) { /* noop */ }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const unmute = () => {
+    if (playerRef.current) {
+      playerRef.current.unMute();
+      playerRef.current.playVideo();
+    }
+    setMuted(false);
+  };
+
+  const current = songs[index];
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#000', zIndex: 150, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, position: 'relative' }}>
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+        {!ready && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#9a9a9a', fontSize: 13,
+          }}>
+            <Loader2 size={20} className="spin" />
+          </div>
+        )}
+        {ready && muted && (
+          <button
+            onClick={unmute}
+            style={{
+              position: 'absolute', bottom: 12, right: 12, display: 'flex', alignItems: 'center', gap: 5,
+              padding: '7px 12px', borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff',
+              border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+            }}
+          >
+            <VolumeX size={13} /> 音声オン
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          aria-label="閉じる"
+          style={{
+            position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
+            backgroundColor: 'rgba(0,0,0,0.6)', border: 'none', cursor: 'pointer',
+          }}
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <div style={{ background: '#fff', padding: '14px 18px 18px', flexShrink: 0 }}>
+        <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 2 }}>{index + 1} / {songs.length}曲 再生中</div>
+        <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {current?.title}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 12 }}>
+          {[current?.lyricist, current?.composer].filter(Boolean).join(' / ')}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <Button variant="quiet" onClick={goPrev}><ChevronLeft size={14} /> 前へ</Button>
+          <Button variant="quiet" onClick={goNext}>次へ <ChevronRight size={14} /></Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VideoThumb({ url }) {
   const videoId = getYoutubeVideoId(url);
   const THUMB_LEVELS = ['maxresdefault', 'hqdefault', 'mqdefault'];
@@ -2091,13 +2245,49 @@ function SuiteGroupCard({ suiteTitle, suiteGenre, songs, renderSong }) {
   );
 }
 
-function SongCard({ song, ownerName, isMine, onEdit, onDelete, onShare, onCopy, onOpen, alreadyCopied }) {
+function SongCard({ song, ownerName, isMine, onEdit, onDelete, onShare, onCopy, onOpen, alreadyCopied, compact, selectable, selected, onToggleSelect }) {
   const suiteLabel = song.suiteTitle
     ? `${song.suiteGenre ? song.suiteGenre + ' ' : ''}『${song.suiteTitle}』より`
     : '';
   const visibleTags = isMine
     ? (song.tags || [])
     : (song.tags || []).filter((t) => t.visibility === 'public');
+
+  if (compact) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, background: '#fff',
+        border: '1px solid var(--line)', borderRadius: 8, padding: '10px 14px', marginBottom: 8,
+        cursor: onOpen ? 'pointer' : 'default',
+      }} onClick={onOpen}>
+        {selectable && (
+          <input
+            type="checkbox" checked={!!selected}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => onToggleSelect && onToggleSelect(song.id)}
+            style={{ width: 15, height: 15, flexShrink: 0 }}
+          />
+        )}
+        {song.videoUrl && <Film size={13} color="var(--ink-soft)" style={{ flexShrink: 0 }} />}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {song.title}
+            {isMine && song.isPrivate && <Lock size={10} style={{ marginLeft: 6, verticalAlign: -1 }} color="var(--ink-soft)" />}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {song.composer}{suiteLabel && ` ・ ${suiteLabel}`}
+          </div>
+        </div>
+        {isMine && (
+          <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+            <IconBtn title="編集" onClick={onEdit}><Pencil size={14} /></IconBtn>
+            <IconBtn title="削除" danger onClick={onDelete}><Trash2 size={14} /></IconBtn>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{
       position: 'relative', display: 'flex', flexDirection: 'column', background: '#fff',
@@ -2762,6 +2952,9 @@ function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
       <Field label="曲名" required>
         <SuggestInput value={d.title} onChange={set('title')} suggestions={titleSuggestions} placeholder="例: 大地讃頌" />
       </Field>
+      <Field label="よみがな(任意・曲名順での並び替え精度が上がります)">
+        <TextInput value={d.titleKana} onChange={(e) => set('titleKana')(e.target.value)} placeholder="例: だいちさんしょう" />
+      </Field>
 
       <Field label="組曲">
         <div style={{ display: 'flex', gap: 8 }}>
@@ -2782,6 +2975,19 @@ function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
             />
           </div>
         </div>
+        {d.suiteTitle && (
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 12, color: 'var(--ink-soft)' }}>組曲内での順番</label>
+            <TextInput
+              type="number"
+              value={d.suiteOrder ?? ''}
+              onChange={(e) => set('suiteOrder')(e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder="例: 1"
+              style={{ width: 90 }}
+            />
+            <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>同じ組曲名の曲をまとめて表示する際の並び順(未入力なら曲名順)</span>
+          </div>
+        )}
       </Field>
 
       <NameField
@@ -2907,27 +3113,29 @@ function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
         </Field>
       )}
 
-      <Field label="公開設定">
-        <label style={{
-          display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12.5,
-          color: 'var(--ink-soft)', cursor: 'pointer',
-        }}>
-          <input
-            type="checkbox"
-            checked={!!d.isPrivate}
-            onChange={(e) => set('isPrivate')(e.target.checked)}
-            style={{ width: 15, height: 15, marginTop: 1 }}
-          />
-          <span>
-            {d.isPrivate ? <Lock size={13} style={{ verticalAlign: -2, marginRight: 4 }} /> : <Eye size={13} style={{ verticalAlign: -2, marginRight: 4 }} />}
-            この曲を非公開にする(自分だけのリストに入れる)
-            <br />
-            <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
-              オンにすると、フォロワーや検索から見つけた人からは見えなくなります。
+      {SOCIAL_FEATURES_ENABLED && (
+        <Field label="公開設定">
+          <label style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12.5,
+            color: 'var(--ink-soft)', cursor: 'pointer',
+          }}>
+            <input
+              type="checkbox"
+              checked={!!d.isPrivate}
+              onChange={(e) => set('isPrivate')(e.target.checked)}
+              style={{ width: 15, height: 15, marginTop: 1 }}
+            />
+            <span>
+              {d.isPrivate ? <Lock size={13} style={{ verticalAlign: -2, marginRight: 4 }} /> : <Eye size={13} style={{ verticalAlign: -2, marginRight: 4 }} />}
+              この曲を非公開にする(自分だけのリストに入れる)
+              <br />
+              <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
+                オンにすると、フォロワーや検索から見つけた人からは見えなくなります。
+              </span>
             </span>
-          </span>
-        </label>
-      </Field>
+          </label>
+        </Field>
+      )}
 
       {error && <p style={{ color: '#9C3B2E', fontSize: 12.5, margin: '0 0 12px' }}>{error}</p>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4, flexWrap: 'wrap' }}>
@@ -3034,19 +3242,72 @@ export default function App() {
   const [showEventCreate, setShowEventCreate] = useState(false);
   const [showProfileShare, setShowProfileShare] = useState(false);
   const [restorePending, setRestorePending] = useState(null);
-  const [shareSong, setShareSong] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [search, setSearch] = useState('');
   const [discoverIds, setDiscoverIds] = useState([]);
   const [dbFilters, setDbFilters] = useState(emptySongFilters());
   const [dbSort, setDbSort] = useState('random');
   const [groupBySuite, setGroupBySuite] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 600);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  const [detailMode, setDetailMode] = useState('simple'); // 'simple' | 'detail'
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const toggleSelectId = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
   const [visibleCount, setVisibleCount] = useState(10);
   const loadMoreRef = useRef(null);
   const [viewFilters, setViewFilters] = useState(emptySongFilters());
   const [viewSort, setViewSort] = useState('random');
   const [randomSeed, setRandomSeed] = useState(() => Math.random().toString(36).slice(2));
   const shuffleSongs = () => setRandomSeed(Math.random().toString(36).slice(2));
+  const [motionPermissionNeeded, setMotionPermissionNeeded] = useState(false);
+  const [motionEnabled, setMotionEnabled] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.DeviceMotionEvent) return;
+    setMotionPermissionNeeded(typeof window.DeviceMotionEvent.requestPermission === 'function');
+    if (typeof window.DeviceMotionEvent.requestPermission !== 'function') setMotionEnabled(true);
+  }, []);
+  const enableShakeToShuffle = async () => {
+    try {
+      const result = await window.DeviceMotionEvent.requestPermission();
+      if (result === 'granted') { setMotionEnabled(true); showToast('シェイクでシャッフルが使えるようになりました'); }
+    } catch (e) { /* noop */ }
+  };
+
+  /* ---- スマホを振ってシャッフル(対応端末のみ。非対応でも問題なく無視される) ---- */
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.DeviceMotionEvent) return;
+    if (view !== 'mydb' || dbSort !== 'random' || !motionEnabled) return;
+    let lastShake = 0;
+    let lastAccel = null;
+    const SHAKE_THRESHOLD = 18; // m/s^2 の変化量(体感で調整済み)
+    const onMotion = (e) => {
+      const a = e.accelerationIncludingGravity;
+      if (!a || a.x == null) return;
+      if (lastAccel) {
+        const delta = Math.abs(a.x - lastAccel.x) + Math.abs(a.y - lastAccel.y) + Math.abs(a.z - lastAccel.z);
+        const now = Date.now();
+        if (delta > SHAKE_THRESHOLD && now - lastShake > 1200) {
+          lastShake = now;
+          shuffleSongs();
+          showToast('シャッフルしました');
+        }
+      }
+      lastAccel = { x: a.x, y: a.y, z: a.z };
+    };
+    window.addEventListener('devicemotion', onMotion);
+    return () => window.removeEventListener('devicemotion', onMotion);
+  }, [view, dbSort, motionEnabled]);
   useEffect(() => {
     setVisibleCount(10);
   }, [dbFilters, dbSort, groupBySuite, randomSeed]);
@@ -3115,12 +3376,16 @@ export default function App() {
 
   const changeTheme = async (id) => {
     const applyChange = () => { setThemeId(id); saveThemeId(id); };
-    const count = await bumpThemeChangeCount();
-    if (count >= 2) {
-      runWithAdGate(10, 'テーマを変更する前に', applyChange, false);
-    } else {
-      applyChange();
+    try {
+      const count = await bumpThemeChangeCount();
+      if (count >= 2) {
+        runWithAdGate(10, 'テーマを変更する前に', applyChange, false);
+        return;
+      }
+    } catch (e) {
+      console.warn('テーマ変更回数の記録に失敗しました。広告表示なしでテーマを適用します', e);
     }
+    applyChange();
   };
 
   /* ---- Drive同期 ----
@@ -3286,6 +3551,51 @@ export default function App() {
     showToast('Googleからログアウトしました(データは端末に残っています)');
   };
 
+  const [deletingDriveData, setDeletingDriveData] = useState(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+  useEffect(() => {
+    if (isStandaloneApp()) return;
+    const handler = (e) => { e.preventDefault(); setInstallPromptEvent(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+  const promptInstall = async () => {
+    if (!installPromptEvent) return;
+    installPromptEvent.prompt();
+    await installPromptEvent.userChoice;
+    setInstallPromptEvent(null);
+  };
+  const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const [showIosInstallHint, setShowIosInstallHint] = useState(false);
+  const shareAppLink = async () => {
+    const url = 'https://sunplusnetwork-del.github.io/Utacolle/';
+    const shareData = { title: 'うたコレ', text: '合唱曲コレクションアプリ「うたコレ」', url };
+    if (navigator.share) {
+      try { await navigator.share(shareData); return; } catch (e) { /* ユーザーがキャンセルした場合など、何もしない */ }
+    } else {
+      const ok = await copyToClipboard(url);
+      showToast(ok ? 'リンクをコピーしました' : 'コピーできませんでした');
+    }
+  };
+  const [showDriveDeleteConfirm, setShowDriveDeleteConfirm] = useState(false);
+  const deleteDriveBackup = async () => {
+    const token = driveTokenRef.current;
+    if (!token) { showToast('Googleにログインしていません'); return; }
+    setDeletingDriveData(true);
+    try {
+      const fileId = driveFileIdRef.current || (await driveFindFileId(token));
+      if (fileId) {
+        await driveDeleteFile(token, fileId);
+        driveFileIdRef.current = null;
+      }
+      showToast('Googleドライブ上のバックアップデータを削除しました');
+    } catch (e) {
+      showToast('削除に失敗しました: ' + (e.message || ''));
+    } finally {
+      setDeletingDriveData(false);
+    }
+  };
+
   const me = meId ? data.users[meId] : null;
   const allUserIds = Object.keys(data.users);
   const mySongsRaw = Object.values(data.songs).filter((s) => s.ownerId === meId);
@@ -3305,6 +3615,16 @@ export default function App() {
         groups.push({ suiteTitle: key, suiteGenre: s.suiteGenre || '', songs: [] });
       }
       groups[indexOf.get(key)].songs.push(s);
+    });
+    groups.forEach((g) => {
+      g.songs.sort((a, b) => {
+        const ao = a.suiteOrder === '' || a.suiteOrder == null ? null : Number(a.suiteOrder);
+        const bo = b.suiteOrder === '' || b.suiteOrder == null ? null : Number(b.suiteOrder);
+        if (ao != null && bo != null) return ao - bo;
+        if (ao != null) return -1;
+        if (bo != null) return 1;
+        return a.title.localeCompare(b.title, 'ja');
+      });
     });
     return { groups, ungrouped };
   }, [groupBySuite, mySongs]);
@@ -3505,6 +3825,16 @@ export default function App() {
     });
     setDeleteConfirm(null);
     showToast('曲を削除しました');
+  };
+  const bulkDeleteSongs = (ids) => {
+    persist((prev) => {
+      const songs = { ...prev.songs };
+      ids.forEach((id) => { delete songs[id]; });
+      return { ...prev, songs };
+    });
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    showToast(`${ids.length}件の曲を削除しました`);
   };
 
   const copySong = (song) => {
@@ -3826,8 +4156,12 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <img src={appIconUrl} alt="うたコレ" style={{ width: 38, height: 38, borderRadius: 9, objectFit: 'cover' }} />
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 19, lineHeight: 1.3, margin: 0, padding: 0 }}>うたコレ</div>
-            <div style={{ fontSize: 11, color: 'var(--ink-soft)', lineHeight: 1.3, margin: 0, padding: 0 }}>UTA-COLLE</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', columnGap: 3, fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 19, lineHeight: 1.3 }}>
+              <span>うた</span><span>コレ</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', columnGap: 3, fontSize: 11, color: 'var(--ink-soft)', lineHeight: 1.3 }}>
+              <span>UTA-</span><span>COLLE</span>
+            </div>
           </div>
         </div>
         <div style={{ position: 'relative' }} ref={switcherRef}>
@@ -3919,10 +4253,10 @@ export default function App() {
       <StaffDivider />
 
       {/* ナビ */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 22, borderBottom: '1px solid var(--line)' }}>
-        <NavTab active={view === 'mydb'} onClick={() => setView('mydb')} icon={<Ticket size={15} />} label="コレクション" />
+      <div style={{ display: 'flex', gap: 0, marginBottom: 22, borderBottom: '1px solid var(--line)', paddingTop: 4 }}>
+        <NavTab active={view === 'mydb'} onClick={() => setView('mydb')} icon={<Ticket size={15} />} label="コレクション" color="var(--wine)" />
         {SOCIAL_FEATURES_ENABLED && (
-          <NavTab active={view === 'discover'} onClick={() => { setView('discover'); setViewedUserId(null); }} icon={<Users size={15} />} label="さがす" />
+          <NavTab active={view === 'discover'} onClick={() => { setView('discover'); setViewedUserId(null); }} icon={<Users size={15} />} label="さがす" color="var(--gold)" />
         )}
       </div>
 
@@ -3967,6 +4301,44 @@ export default function App() {
               <Flag size={13} /> 現在 {reportScore(me)}/{REPORT_THRESHOLD} 件の通報を受けています。
               {REPORT_THRESHOLD}件に達するとアカウントが凍結されます。
             </div>
+          )}
+        </div>
+      )}
+
+      {view === 'mypage' && (
+        <div style={{
+          background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: '16px 22px',
+          marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <Share2 size={18} color="var(--wine)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <div style={{ fontWeight: 700, fontSize: 13.5 }}>うたコレを紹介する</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>友人にアプリのリンクをすぐ送れます</div>
+          </div>
+          <Button variant="primary" onClick={shareAppLink}>
+            <Share2 size={13} /> リンクを共有
+          </Button>
+        </div>
+      )}
+
+      {view === 'mypage' && (installPromptEvent || isIos) && (
+        <div style={{
+          background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: '16px 22px',
+          marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <Ticket size={18} color="var(--wine)" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 160 }}>
+            <div style={{ fontWeight: 700, fontSize: 13.5 }}>ホーム画面に追加する</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>アプリのように起動できるようになります</div>
+          </div>
+          {installPromptEvent ? (
+            <Button variant="primary" onClick={promptInstall}>
+              <Plus size={13} /> 追加する
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={() => setShowIosInstallHint(true)}>
+              <Plus size={13} /> 追加方法を見る
+            </Button>
           )}
         </div>
       )}
@@ -4140,25 +4512,52 @@ export default function App() {
               <FileText size={13} /> コレクションをCSVで書き出す
             </a>
           </div>
+
+          {googleSignedIn && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px dashed var(--line)' }}>
+              <Button
+                variant="quiet"
+                onClick={() => setShowDriveDeleteConfirm(true)}
+                disabled={deletingDriveData}
+                style={{ color: '#9C3B2E' }}
+              >
+                {deletingDriveData ? <Loader2 size={13} className="spin" /> : <Trash2 size={13} />}
+                Googleドライブ上のバックアップデータを削除
+              </Button>
+              <p style={{ fontSize: 11, color: 'var(--ink-soft)', margin: '6px 0 0' }}>
+                この端末のデータは残したまま、Googleドライブの非公開領域(アプリ専用フォルダ)に
+                保存されているバックアップだけを削除します。
+              </p>
+            </div>
+          )}
         </div>
       )}
 
       {view === 'mypage' && (
-        <div style={{ textAlign: 'center', marginTop: 18, marginBottom: 6, display: 'flex', gap: 14, justifyContent: 'center' }}>
-          <a href="./about.html" target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>
-            うたコレとは
-          </a>
-          <a href="./terms.html" target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>
-            利用規約
-          </a>
-          <a
-            href="./privacy.html"
-            target="_blank"
-            rel="noreferrer"
-            style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}
-          >
-            プライバシーポリシー
-          </a>
+        <div style={{ textAlign: 'center', marginTop: 18, marginBottom: 6 }}>
+          <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+            <a href="./guide.html" target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>
+              使い方
+            </a>
+            <a href="./about.html" target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>
+              うたコレとは
+            </a>
+            <a href="./terms.html" target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>
+              利用規約
+            </a>
+            <a
+              href="./privacy.html"
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}
+            >
+              プライバシーポリシー
+            </a>
+            <a href="mailto:sunplus.network@gmail.com" style={{ fontSize: 11.5, color: 'var(--ink-soft)', textDecoration: 'underline' }}>
+              お問い合わせ・ご要望
+            </a>
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>© 2026 うたコレ</div>
         </div>
       )}
 
@@ -4171,23 +4570,63 @@ export default function App() {
               {mySongsRaw.length > 0 && <span style={{ marginLeft: 8, fontWeight: 600, color: 'var(--ink)' }}>登録曲数: {mySongsRaw.length}曲</span>}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Button onClick={() => setShowImportList(true)}><QrCode size={13} /> QR/URLから読み込む</Button>
-              <Button onClick={() => setShowShareList(true)}><Share2 size={13} /> 曲リストを共有</Button>
-              <Button onClick={() => setShowCsvImport(true)}><FileText size={13} /> CSVから一括登録</Button>
-              <Button variant="primary" onClick={startNewSongRegistration}><Plus size={14} /> 曲を登録</Button>
+              <Button onClick={() => setShowImportList(true)}><QrCode size={13} /> 読込</Button>
+              <Button onClick={() => { setSelectedIds(new Set()); setShowShareList(true); }}><Share2 size={13} /> 共有</Button>
+              <Button onClick={() => setShowCsvImport(true)}><FileText size={13} /> CSV</Button>
+              <Button
+                onClick={() => setShowPlaylist(true)}
+                disabled={mySongsAll.filter((s) => s.videoUrl).length === 0}
+              >
+                <Film size={13} /> 動画を再生リストで再生
+              </Button>
+              <Button variant="primary" onClick={startNewSongRegistration}><Plus size={14} /> 登録</Button>
             </div>
           </div>
 
           {mySongsRaw.length > 0 && (
             <>
               <SongFilterBar filters={dbFilters} setFilters={setDbFilters} sort={dbSort} setSort={setDbSort} songs={mySongsRaw} onShuffle={shuffleSongs} />
-              <label style={{
-                display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink-soft)',
-                cursor: 'pointer', marginBottom: 14,
-              }}>
-                <input type="checkbox" checked={groupBySuite} onChange={(e) => setGroupBySuite(e.target.checked)} style={{ width: 14, height: 14 }} />
-                <BookOpen size={13} /> 組曲でまとめて表示する
-              </label>
+              {dbSort === 'random' && motionPermissionNeeded && !motionEnabled && (
+                <div style={{ marginBottom: 12 }}>
+                  <Button variant="quiet" onClick={enableShakeToShuffle}>
+                    <Shuffle size={13} /> スマホを振ってシャッフルする機能を有効にする
+                  </Button>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center', marginBottom: 14 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink-soft)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={groupBySuite} onChange={(e) => setGroupBySuite(e.target.checked)} style={{ width: 14, height: 14 }} />
+                  <BookOpen size={13} /> 組曲でまとめて表示する
+                </label>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <Button variant={detailMode === 'simple' ? 'default' : 'quiet'} onClick={() => setDetailMode('simple')}>簡易表示</Button>
+                  <Button variant={detailMode === 'detail' ? 'default' : 'quiet'} onClick={() => setDetailMode('detail')}>詳細表示</Button>
+                </div>
+                <Button
+                  variant={selectMode ? 'default' : 'quiet'}
+                  onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
+                >
+                  {selectMode ? <X size={13} /> : <Check size={13} />} {selectMode ? '選択をやめる' : '複数選択'}
+                </Button>
+              </div>
+              {selectMode && (
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 14,
+                  background: 'var(--gold-soft)', borderRadius: 8, padding: '8px 12px',
+                }}>
+                  <span style={{ fontSize: 12.5 }}>{selectedIds.size}曲を選択中</span>
+                  <Button variant="quiet" onClick={() => setSelectedIds(new Set(mySongs.map((s) => s.id)))}>表示中を全選択</Button>
+                  <Button variant="quiet" onClick={() => setSelectedIds(new Set())}>選択解除</Button>
+                  <Button onClick={() => setShowShareList(true)} disabled={selectedIds.size === 0}><Share2 size={13} /> 選択した曲を共有</Button>
+                  <Button
+                    onClick={() => setDeleteConfirm({ bulk: true, ids: Array.from(selectedIds) })}
+                    disabled={selectedIds.size === 0}
+                    style={{ color: '#9C3B2E' }}
+                  >
+                    <Trash2 size={13} /> 選択した曲を削除
+                  </Button>
+                </div>
+              )}
             </>
           )}
 
@@ -4211,10 +4650,12 @@ export default function App() {
                   renderSong={(s) => (
                     <SongCard
                       key={s.id} song={s} isMine
-                      onOpen={() => setSongDetail(s)}
+                      compact={detailMode === 'simple'}
+                      selectable={selectMode} selected={selectedIds.has(s.id)} onToggleSelect={toggleSelectId}
+                      onOpen={() => (selectMode ? toggleSelectId(s.id) : setSongDetail(s))}
                       onEdit={() => openSongForm(s)}
                       onDelete={() => setDeleteConfirm(s)}
-                      onShare={() => setShareSong(s)}
+                      onShare={() => { setSelectedIds(new Set([s.id])); setShowShareList(true); }}
                     />
                   )}
                 />
@@ -4222,10 +4663,12 @@ export default function App() {
               {suiteGroups.ungrouped.map((s) => (
                 <SongCard
                   key={s.id} song={s} isMine
-                  onOpen={() => setSongDetail(s)}
+                  compact={detailMode === 'simple'}
+                  selectable={selectMode} selected={selectedIds.has(s.id)} onToggleSelect={toggleSelectId}
+                  onOpen={() => (selectMode ? toggleSelectId(s.id) : setSongDetail(s))}
                   onEdit={() => openSongForm(s)}
                   onDelete={() => setDeleteConfirm(s)}
-                  onShare={() => setShareSong(s)}
+                  onShare={() => { setSelectedIds(new Set([s.id])); setShowShareList(true); }}
                 />
               ))}
             </>
@@ -4233,10 +4676,12 @@ export default function App() {
             mySongs.map((s) => (
               <SongCard
                 key={s.id} song={s} isMine
-                onOpen={() => setSongDetail(s)}
+                compact={detailMode === 'simple'}
+                selectable={selectMode} selected={selectedIds.has(s.id)} onToggleSelect={toggleSelectId}
+                onOpen={() => (selectMode ? toggleSelectId(s.id) : setSongDetail(s))}
                 onEdit={() => openSongForm(s)}
                 onDelete={() => setDeleteConfirm(s)}
-                onShare={() => setShareSong(s)}
+                onShare={() => { setSelectedIds(new Set([s.id])); setShowShareList(true); }}
               />
             ))
           )}
@@ -4448,6 +4893,7 @@ export default function App() {
           googleSignedIn={googleSignedIn}
           driveShareConfigured={driveShareConfigured}
           onShareViaDrive={shareSongsViaDrive}
+          initialSelectedIds={selectedIds.size > 0 ? selectedIds : null}
         />
       )}
 
@@ -4461,6 +4907,21 @@ export default function App() {
           myUserId={meId}
           mySongs={mySongsRaw}
         />
+      )}
+
+      {view === 'mydb' && showScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          aria-label="トップへ戻る"
+          style={{
+            position: 'fixed', bottom: 20, right: 20, width: 44, height: 44, borderRadius: '50%',
+            background: 'var(--wine)', color: '#fff', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 14px rgba(0,0,0,.25)', zIndex: 60,
+          }}
+        >
+          <ChevronUp size={20} />
+        </button>
       )}
 
       {adGate && (
@@ -4489,19 +4950,56 @@ export default function App() {
         <ProfileShareModal me={me} onClose={() => setShowProfileShare(false)} onToast={showToast} />
       )}
 
-      {deleteConfirm && (
-        <ModalShell onClose={() => setDeleteConfirm(null)} width={380}>
-          <h3 style={{ fontFamily: 'var(--font-display)', margin: '0 0 8px' }}>この曲を削除しますか?</h3>
-          <p style={{ fontSize: 13, color: 'var(--ink-soft)', margin: '0 0 18px' }}>「{deleteConfirm.title}」を削除します。この操作は取り消せません。</p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button variant="quiet" onClick={() => setDeleteConfirm(null)}>キャンセル</Button>
-            <Button variant="danger" onClick={() => deleteSong(deleteConfirm.id)}><Trash2 size={14} /> 削除する</Button>
+      {showIosInstallHint && (
+        <ModalShell onClose={() => setShowIosInstallHint(false)} width={380}>
+          <h3 style={{ fontFamily: 'var(--font-display)', margin: '0 0 8px' }}>ホーム画面に追加する方法</h3>
+          <ol style={{ fontSize: 13, color: 'var(--ink-soft)', paddingLeft: '1.2em', lineHeight: 1.9 }}>
+            <li>画面下(Safari)または上部の共有アイコン <Share2 size={12} style={{ verticalAlign: -1 }} /> をタップ</li>
+            <li>メニューから「ホーム画面に追加」を選択</li>
+            <li>右上の「追加」をタップ</li>
+          </ol>
+          <p style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>※Safariでのみ利用できます(Chrome等では表示されません)。</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button variant="quiet" onClick={() => setShowIosInstallHint(false)}>閉じる</Button>
           </div>
         </ModalShell>
       )}
 
-      {shareSong && (
-        <ShareModal song={shareSong} owner={me} onClose={() => setShareSong(null)} onToast={showToast} />
+      {showDriveDeleteConfirm && (
+        <ModalShell onClose={() => setShowDriveDeleteConfirm(false)} width={380}>
+          <h3 style={{ fontFamily: 'var(--font-display)', margin: '0 0 8px' }}>ドライブのバックアップを削除しますか?</h3>
+          <p style={{ fontSize: 13, color: 'var(--ink-soft)', margin: '0 0 18px' }}>
+            Googleドライブの非公開領域に保存されているバックアップデータを削除します。
+            この端末のデータはそのまま残りますが、次回ログイン同期時に改めてアップロードされます。
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button variant="quiet" onClick={() => setShowDriveDeleteConfirm(false)}>キャンセル</Button>
+            <Button variant="danger" onClick={() => { setShowDriveDeleteConfirm(false); deleteDriveBackup(); }}>
+              <Trash2 size={14} /> 削除する
+            </Button>
+          </div>
+        </ModalShell>
+      )}
+
+      {deleteConfirm && (
+        <ModalShell onClose={() => setDeleteConfirm(null)} width={380}>
+          <h3 style={{ fontFamily: 'var(--font-display)', margin: '0 0 8px' }}>
+            {deleteConfirm.bulk ? `${deleteConfirm.ids.length}曲を削除しますか?` : 'この曲を削除しますか?'}
+          </h3>
+          <p style={{ fontSize: 13, color: 'var(--ink-soft)', margin: '0 0 18px' }}>
+            {deleteConfirm.bulk ? `選択した${deleteConfirm.ids.length}曲を削除します。` : `「${deleteConfirm.title}」を削除します。`}
+            この操作は取り消せません。
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button variant="quiet" onClick={() => setDeleteConfirm(null)}>キャンセル</Button>
+            <Button
+              variant="danger"
+              onClick={() => (deleteConfirm.bulk ? bulkDeleteSongs(deleteConfirm.ids) : deleteSong(deleteConfirm.id))}
+            >
+              <Trash2 size={14} /> 削除する
+            </Button>
+          </div>
+        </ModalShell>
       )}
 
       {songDetail && (
@@ -4711,11 +5209,17 @@ function Wrap({ children, theme }) {
   } : {};
   return (
     <div className="app-wrap" style={{
-      background: 'var(--paper)', minHeight: 480, borderRadius: 14, padding: '24px 26px 60px',
+      background: 'var(--paper)', minHeight: 480, borderRadius: 14, padding: '32px 26px 60px',
       fontFamily: 'var(--font-body)', color: 'var(--ink)', position: 'relative',
       maxWidth: 720, margin: '0 auto', boxSizing: 'border-box', transition: 'background .2s ease',
+      overflow: 'hidden',
       ...themeVars,
     }}>
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 8,
+        background: 'linear-gradient(90deg, var(--wine), var(--gold), var(--sage))',
+        transition: 'background .2s ease',
+      }} />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap');
         :root {
@@ -4741,18 +5245,24 @@ function Wrap({ children, theme }) {
   );
 }
 
-function NavTab({ active, onClick, icon, label, badge }) {
+function NavTab({ active, onClick, icon, label, badge, color = 'var(--wine)' }) {
   return (
     <button onClick={onClick} style={{
-      display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: 'transparent',
-      border: 'none', borderBottom: active ? '2px solid var(--wine)' : '2px solid transparent',
-      color: active ? 'var(--wine)' : 'var(--ink-soft)', fontWeight: active ? 700 : 500,
-      fontSize: 13.5, cursor: 'pointer', fontFamily: 'var(--font-body)', marginBottom: -1,
+      display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px 9px',
+      background: active ? color : '#fff',
+      border: `1px solid ${active ? color : 'var(--line)'}`,
+      borderBottom: active ? `1px solid ${color}` : '1px solid var(--line)',
+      borderRadius: '10px 10px 0 0',
+      color: active ? '#fff' : 'var(--ink-soft)', fontWeight: active ? 700 : 600,
+      fontSize: 13.5, cursor: 'pointer', fontFamily: 'var(--font-body)',
+      marginBottom: -1, marginRight: 4, position: 'relative', top: active ? 0 : 4,
+      boxShadow: active ? '0 -3px 8px rgba(0,0,0,.10)' : 'none',
+      transition: 'top .15s ease',
     }}>
       {icon} {label}
       {badge > 0 && (
         <span style={{
-          fontSize: 10.5, background: active ? 'var(--wine)' : 'var(--line)',
+          fontSize: 10.5, background: active ? 'rgba(255,255,255,.3)' : 'var(--line)',
           color: active ? '#fff' : 'var(--ink-soft)', borderRadius: 10, padding: '1px 6px',
         }}>{badge}</span>
       )}
@@ -5038,8 +5548,10 @@ function SharedLinkImportModal({ url, initialField, mySongs, onClose, onOverwrit
   );
 }
 
-function ShareListModal({ mySongs, myName, onClose, onToast, googleSignedIn, driveShareConfigured, onShareViaDrive }) {
-  const [selected, setSelected] = useState(() => new Set(mySongs.map((s) => s.id)));
+function ShareListModal({ mySongs, myName, onClose, onToast, googleSignedIn, driveShareConfigured, onShareViaDrive, initialSelectedIds }) {
+  const [selected, setSelected] = useState(() =>
+    initialSelectedIds ? new Set(initialSelectedIds) : new Set(mySongs.map((s) => s.id))
+  );
   const [showQr, setShowQr] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState('embed'); // 'embed' | 'drive'
@@ -5755,43 +6267,3 @@ function ReportModal({ userName, onClose, onSubmit }) {
   );
 }
 
-function ShareModal({ song, owner, onClose, onToast }) {
-  const [copied, setCopied] = useState(false);
-  const url = `https://chorusdb.app/u/${owner.userId}/s/${song.id}`;
-
-  const copyLink = async () => {
-    const ok = await copyToClipboard(url);
-    if (ok) {
-      setCopied(true);
-      onToast('URLをコピーしました');
-      setTimeout(() => setCopied(false), 1500);
-    } else {
-      onToast('コピーできませんでした。URLを選択して手動でコピーしてください');
-    }
-  };
-
-  return (
-    <ModalShell onClose={onClose} width={480}>
-      <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>共有URLを発行</h2>
-      <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 18px' }}>
-        プロトタイプのため実際には開けませんが、本実装ではこのURLで曲ページが公開されます。
-      </p>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--line)',
-        borderRadius: 8, padding: '8px 10px', marginBottom: 18,
-      }}>
-        <input
-          readOnly value={url}
-          onFocus={(e) => e.target.select()}
-          style={{
-            fontFamily: 'var(--font-mono)', fontSize: 12.5, flex: 1, border: 'none', outline: 'none',
-            background: 'transparent', color: 'var(--ink)', minWidth: 0,
-          }}
-        />
-        <Button onClick={copyLink}>{copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'コピー済み' : 'コピー'}</Button>
-      </div>
-      <SectionLabel>プレビュー</SectionLabel>
-      <SongCard song={song} ownerName={owner.displayName} />
-    </ModalShell>
-  );
-}
