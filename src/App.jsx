@@ -3583,6 +3583,7 @@ export default function App() {
   const shuffleSongs = () => setRandomSeed(Math.random().toString(36).slice(2));
   const [motionPermissionNeeded, setMotionPermissionNeeded] = useState(false);
   const [motionEnabled, setMotionEnabled] = useState(false);
+  const [shakePref, setShakePref] = useState(true); // 「スマホを振ってシャッフル」機能のオン/オフ(マイページで設定)
   useEffect(() => {
     if (typeof window === 'undefined' || !window.DeviceMotionEvent) return;
     setMotionPermissionNeeded(typeof window.DeviceMotionEvent.requestPermission === 'function');
@@ -3658,7 +3659,6 @@ export default function App() {
   const [encounterUser, setEncounterUser] = useState(null);
   const [encounterAutoScan, setEncounterAutoScan] = useState(false);
   const [themeId, setThemeId] = useState('wine');
-  const [shakePref, setShakePref] = useState(true); // 「スマホを振ってシャッフル」機能のオン/オフ(マイページで設定)
   const [toast, setToast] = useState('');
   const toastTimer = useRef(null);
   const currentTheme = getTheme(themeId);
