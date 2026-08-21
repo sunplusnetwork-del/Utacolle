@@ -325,7 +325,7 @@ const THEMES = [
   { id: 'vivid-magenta', name: 'ビビッドマゼンタ', category: 'vivid', paper: '#F6F3F5', ink: '#2E1927', inkSoft: '#895878', wine: '#DC189B', wineSoft: '#F0DBE9', gold: '#D74742', goldSoft: '#EEDDDD', sage: '#31C47A', sageSoft: '#DEEDE6', line: '#DED3DB' },
   { id: 'vivid-turquoise', name: 'ビビッドターコイズ', category: 'vivid', paper: '#F3F6F6', ink: '#192E2E', inkSoft: '#588989', wine: '#18AAAA', wineSoft: '#DBF0F0', gold: '#2F59BC', goldSoft: '#DDE2EE', sage: '#963D2C', sageSoft: '#EDE0DE', line: '#D3DEDE' },
   {
-    id: 'apple-light', name: 'Apple風(試作)', category: 'apple',
+    id: 'apple-light', name: '試作001', category: 'apple',
     paper: '#F2F2F7', ink: '#1C1C1E', inkSoft: '#8E8E93',
     wine: '#007AFF', wineSoft: '#E5F1FF',
     gold: '#FF9500', goldSoft: '#FFF2E0',
@@ -347,7 +347,7 @@ const THEME_CATEGORIES = [
   { id: 'classic-western', label: 'クラシカル(洋)' },
   { id: 'ethnic', label: 'エスニック' },
   { id: 'vivid', label: '原色・ビビッド' },
-  { id: 'apple', label: 'Apple風(試作)' },
+  { id: 'apple', label: '試作' },
 ];
 function getTheme(id) {
   return THEMES.find((t) => t.id === id) || THEMES[0];
@@ -1299,21 +1299,33 @@ function normalizeForSort(s) {
 }
 function sortSongs(songs, sortKey, randomSeed = '') {
   const list = [...songs];
-  if (sortKey === 'title') {
+  const titleCompare = (a, b) => {
     // 組曲名がある場合は組曲名を優先してまとめ、組曲内は曲名(よみがな優先)順にする
-    return list.sort((a, b) => {
-      const ak = normalizeForSort(a.suiteTitle || a.title);
-      const bk = normalizeForSort(b.suiteTitle || b.title);
-      const cmp = ak.localeCompare(bk, 'ja', { numeric: true, sensitivity: 'base' });
-      if (cmp !== 0) return cmp;
-      const at = normalizeForSort(a.titleKana || a.title);
-      const bt = normalizeForSort(b.titleKana || b.title);
-      return at.localeCompare(bt, 'ja', { numeric: true, sensitivity: 'base' });
-    });
-  }
+    const ak = normalizeForSort(a.suiteTitle || a.title);
+    const bk = normalizeForSort(b.suiteTitle || b.title);
+    const cmp = ak.localeCompare(bk, 'ja', { numeric: true, sensitivity: 'base' });
+    if (cmp !== 0) return cmp;
+    const at = normalizeForSort(a.titleKana || a.title);
+    const bt = normalizeForSort(b.titleKana || b.title);
+    return at.localeCompare(bt, 'ja', { numeric: true, sensitivity: 'base' });
+  };
+  if (sortKey === 'title-asc' || sortKey === 'title') return list.sort(titleCompare);
+  if (sortKey === 'title-desc') return list.sort((a, b) => titleCompare(b, a));
   if (sortKey === 'oldest') return list.sort((a, b) => a.createdAt - b.createdAt);
   if (sortKey === 'updated') return list.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
   if (sortKey === 'newest') return list.sort((a, b) => b.createdAt - a.createdAt);
+  if (sortKey === 'sungDate-desc' || sortKey === 'sungDate-asc') {
+    // 歌った記録の日付順。未入力の曲は常に最後に回す。
+    const dir = sortKey === 'sungDate-desc' ? -1 : 1;
+    return list.sort((a, b) => {
+      const ad = a.sungRecord?.date || '';
+      const bd = b.sungRecord?.date || '';
+      if (!ad && !bd) return 0;
+      if (!ad) return 1;
+      if (!bd) return -1;
+      return dir * ad.localeCompare(bd);
+    });
+  }
   // 'random'(デフォルト): セッション内では順序が変わらない疑似ランダム
   return list.sort((a, b) => seededHash(a.id + randomSeed) - seededHash(b.id + randomSeed));
 }
@@ -2827,10 +2839,13 @@ function SongFilterBar({ filters, setFilters, sort, setSort, songs = [], onShuff
         {sort !== undefined && (
           <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ ...inputStyle, width: 150 }}>
             <option value="random">ランダム</option>
-            <option value="title">曲名順(組曲優先)</option>
+            <option value="title-asc">曲名順(組曲優先)・昇順</option>
+            <option value="title-desc">曲名順(組曲優先)・降順</option>
             <option value="newest">追加日が新しい順</option>
             <option value="oldest">追加日が古い順</option>
             <option value="updated">更新日が新しい順</option>
+            <option value="sungDate-desc">歌った日が新しい順</option>
+            <option value="sungDate-asc">歌った日が古い順</option>
           </select>
         )}
         {sort === 'random' && onShuffle && (
@@ -3172,12 +3187,27 @@ function ProfileForm({ initial, existingIds, onSave, onCancel, isNew, disabled }
 /*  曲登録・編集フォーム                                                */
 /* ------------------------------------------------------------------ */
 
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
   const [d, setD] = useState(() => ({ ...emptySongDraft(), ...(initial || {}) }));
   const [customTag, setCustomTag] = useState('');
   const [error, setError] = useState('');
   const set = (k) => (v) => setD((prev) => ({ ...prev, [k]: v }));
   const setSungRecord = (k) => (v) => setD((prev) => ({ ...prev, sungRecord: { ...(prev.sungRecord || {}), [k]: v } }));
+
+  // 「歌った記録」欄が表示されていて、まだ日付が未入力の場合は当日の日付を初期値として入れておく
+  // (何を入力すればいいか分かりにくい、という声への対応。もちろん後から自由に変更できる)。
+  useEffect(() => {
+    const hasSungTag = (d.tags || []).some((t) => t.name === SUNG_TAG_NAME);
+    if (hasSungTag && !d.sungRecord?.date) {
+      setSungRecord('date')(todayISO());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.tags]);
 
   const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
   const titleSuggestions = useMemo(() => uniq(allSongs.map((s) => s.title)), [allSongs]);
@@ -3492,6 +3522,12 @@ export default function App() {
   const [driveError, setDriveError] = useState('');
   const driveTokenRef = useRef(null);
   const driveFileIdRef = useRef(null);
+  // Googleログイン直後、Driveからのダウンロード・反映(reconcile)が終わるまでの間、
+  // syncToDriveによるアップロードを止めておくためのフラグ。これが無いと、ダウンロードが
+  // 完了する前に端末側の(まだ同期前の)ローカルデータでDrive上の正しいデータを
+  // 上書きしてしまい、別端末で同じGoogleアカウントにログインした時に「別ユーザーとして
+  // 登録されてしまう」不具合の原因になっていた。
+  const driveReconcilingRef = useRef(false);
   const googleTokenClientRef = useRef(null);
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [songModal, setSongModal] = useState(null);
@@ -3724,6 +3760,11 @@ export default function App() {
   const syncToDrive = useCallback(async (next) => {
     const token = driveTokenRef.current;
     if (!token) return;
+    if (driveReconcilingRef.current) {
+      // Driveからの初回ダウンロード・反映が終わるまではアップロードしない(上記の理由を参照)。
+      // このタイミングの変更はreconcile完了後に改めてsetDataされるため、失われることはない。
+      return;
+    }
     setDriveSyncStatus('syncing');
     try {
       const result = await driveUpload(token, driveFileIdRef.current, next);
@@ -3796,13 +3837,14 @@ export default function App() {
   }, []);
 
   const applyDriveDataAfterSignIn = useCallback(async (token) => {
+    driveReconcilingRef.current = true;
     setDriveSyncStatus('syncing');
     try {
       let fileId = await driveFindFileId(token);
       if (fileId) {
         driveFileIdRef.current = fileId;
         const remote = await driveDownload(token, fileId);
-        if (remote && remote.users && remote.songs) {
+        if (remote && remote.users && remote.songs && Object.keys(remote.users).length > 0) {
           setData(remote);
           await saveData(remote);
           const firstUserId = Object.keys(remote.users)[0];
@@ -3823,6 +3865,9 @@ export default function App() {
       console.warn('Driveからの読み込みに失敗しました', e);
       setDriveSyncStatus('error');
       setDriveError(e.message || 'Driveからの読み込みに失敗しました');
+    } finally {
+      // 成功・失敗どちらでも、これ以降は通常通りsyncToDriveでのアップロードを許可する。
+      driveReconcilingRef.current = false;
     }
   }, []);
 
@@ -3974,7 +4019,11 @@ export default function App() {
     const groups = [];
     const indexOf = new Map();
     const ungrouped = [];
-    mySongs.forEach((s) => {
+    // 組曲でまとめる時は、検索・絞り込みや表示件数の制限を受けず、コレクション内の全曲を対象に
+    // 組曲を組み立てる。そうしないと、絞り込みやページネーションの都合で組曲の一部の曲だけ
+    // 表示されてしまうことがあったため。
+    const source = sortSongs(mySongsRaw, dbSort, randomSeed);
+    source.forEach((s) => {
       const key = (s.suiteTitle || '').trim();
       if (!key) { ungrouped.push(s); return; }
       if (!indexOf.has(key)) {
@@ -3994,7 +4043,7 @@ export default function App() {
       });
     });
     return { groups, ungrouped };
-  }, [groupBySuite, mySongs]);
+  }, [groupBySuite, mySongsRaw, dbSort, randomSeed]);
 
   const followerIds = allUserIds.filter((uid) => (data.users[uid].followees || []).includes(meId));
   const followerCount = followerIds.length;
@@ -5447,7 +5496,7 @@ export default function App() {
             alreadyCopied={mySourceIds.has(songDetail.sourceSongId || songDetail.id)}
             onEdit={() => { openSongForm(songDetail); setSongDetail(null); }}
             onDelete={() => { setDeleteConfirm(songDetail); setSongDetail(null); }}
-            onShare={() => { setShareSong(songDetail); setSongDetail(null); }}
+            onShare={() => { setSelectedIds(new Set([songDetail.id])); setShowShareList(true); setSongDetail(null); }}
             onCopy={() => { copySong(songDetail); setSongDetail(null); }}
           />
         </ModalShell>

@@ -1,7 +1,7 @@
 {
   "name": "うたコレ",
   "short_name": "うたコレ",
-  "description": "自分が歌った・聴いた合唱曲を記録し、プレイリストとして再生できるアプリ",
+  "description": "自分が歌った・聴いた曲を記録し、プレイリストとして再生できるアプリ",
   "start_url": "./index.html",
   "scope": "./",
   "id": "./index.html",
