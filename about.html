@@ -39,18 +39,12 @@
   }
   a { color: var(--wine); }
   .back { display: inline-block; margin-top: 40px; font-size: 13px; }
-  .song-card {
-    background: #fff; border: 1px solid var(--line); border-radius: 10px;
-    padding: 16px 18px; margin-bottom: 12px;
-  }
-  .song-title { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
-  .song-sub { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 6px; }
-  .song-meta { font-size: 12.5px; color: var(--ink-soft); margin-bottom: 8px; }
-  .song-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
-  .tag {
-    font-size: 11px; background: var(--wine-soft); color: var(--wine);
-    padding: 3px 10px; border-radius: 20px; font-weight: 600;
-  }
+  .shot-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+  @media (max-width: 560px) { .shot-gallery { grid-template-columns: 1fr; } }
+  .shot-item { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .shot-item img { display: block; width: 100%; height: auto; }
+  .shot-caption { padding: 10px 14px 14px; font-size: 13px; color: var(--ink-soft); }
+  .shot-caption strong { display: block; color: var(--ink); font-size: 14px; margin-bottom: 2px; }
   .song-note { font-size: 11.5px; color: var(--ink-soft); border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 4px; }
 </style>
 </head>
@@ -101,31 +95,35 @@
     </div>
   </div>
 
-  <h2>こんな風に記録できます(イメージ)</h2>
-  <p>実際のアプリ画面のイメージです。曲名だけでなく、演奏動画や作品の背景まで一緒に残せます。</p>
+  <h2>実際の画面</h2>
+  <p>実際にアプリを使っている画面のスクリーンショットです。</p>
 
-  <div class="song-card">
-    <div class="song-title">海よ</div>
-    <div class="song-sub">混声合唱とピアノのための「水のいのち」より</div>
-    <div class="song-meta">作詩: 高野喜久雄　作曲: 高田三郎　1964年</div>
-    <div class="song-tags">
-      <span class="tag">混声四部</span><span class="tag">ピアノ</span><span class="tag">日本語</span>
+  <div class="shot-gallery">
+    <div class="shot-item">
+      <img src="./screenshots/01_list.jpg" alt="コレクション一覧画面" loading="lazy" />
+      <div class="shot-caption"><strong>コレクション一覧</strong>登録した曲を一覧で管理。読込・共有・CSV入出力・プレイリスト再生もここから。</div>
     </div>
-    <div class="song-note">歌った記録: 2024年 定期演奏会にて演奏</div>
-  </div>
-
-  <div class="song-card">
-    <div class="song-title">大地讃頌</div>
-    <div class="song-sub">混声合唱のためのカンタータ「土の歌」より</div>
-    <div class="song-meta">作詩: 大木惇夫　作曲: 佐藤眞　1962年</div>
-    <div class="song-tags">
-      <span class="tag">混声四部</span><span class="tag">ピアノ</span><span class="tag">好き</span>
+    <div class="shot-item">
+      <img src="./screenshots/02_suite.jpg" alt="組曲でまとめて表示する機能" loading="lazy" />
+      <div class="shot-caption"><strong>組曲でまとめて表示</strong>組曲・曲集単位でグループ化して、収録曲を見渡せます。</div>
+    </div>
+    <div class="shot-item">
+      <img src="./screenshots/03_detail.jpg" alt="曲の詳細表示・演奏動画" loading="lazy" />
+      <div class="shot-caption"><strong>詳細表示・演奏動画</strong>演奏動画のサムネイルつきで、作詩・作曲・編成などの情報を確認できます。</div>
+    </div>
+    <div class="shot-item">
+      <img src="./screenshots/04_share.jpg" alt="曲リストの共有画面" loading="lazy" />
+      <div class="shot-caption"><strong>曲リストを共有</strong>選んだ曲をQRコードやリンクで共有。曲数が多い場合はGoogleドライブ経由の短縮リンクも使えます。</div>
+    </div>
+    <div class="shot-item">
+      <img src="./screenshots/05_form1.jpg" alt="曲の登録フォーム" loading="lazy" />
+      <div class="shot-caption"><strong>詳細な曲情報の登録</strong>編成・伴奏・言語・演奏動画URL・楽譜入手先まで、細かく記録できます。</div>
+    </div>
+    <div class="shot-item">
+      <img src="./screenshots/06_form2.jpg" alt="タグと歌った記録の登録" loading="lazy" />
+      <div class="shot-caption"><strong>タグ・歌った記録</strong>「歌ったことある」「好き」などのタグ付けと、演奏会名・日付・合唱団などの記録(自分だけに表示)。</div>
     </div>
   </div>
-
-  <p style="font-size:12.5px;color:var(--ink-soft);">
-    ※上記はアプリのイメージを伝えるためのサンプル表示です。実際の登録内容ではありません。
-  </p>
 
   <h2>誰のためのアプリ?</h2>
   <ul>
