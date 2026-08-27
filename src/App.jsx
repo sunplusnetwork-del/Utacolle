@@ -170,6 +170,58 @@ if (typeof window !== 'undefined') {
   }
 }
 const GOOGLE_SIGNED_IN_FLAG = 'chorusdb:google-was-signed-in'; // 次回起動時に自動で再ログインを試みるための目印(トークン自体は保存しない)
+const LAST_SEEN_CHANGELOG_KEY = 'chorusdb:last-seen-changelog'; // 「お知らせ」を最後に見たバージョン(端末ごとに保存)
+
+/* ---- お知らせ(更新履歴) ----
+   新しい変更があったら、この配列の先頭に追加していく。versionは日付(YYYY-MM-DD)でよい。
+   起動時、前回このお知らせを見た時より新しい項目があれば、自動でポップアップ表示する。
+   マイページの「お知らせ」からは、いつでも全履歴を見返せる。 */
+const CHANGELOG = [
+  {
+    version: '2026-08-23',
+    items: [
+      'スマホでアプリを開くたびにポップアップの許可を毎回聞かれる問題について、別の原因(起動時の自動再ログイン処理)を見つけて対応しました',
+      '車のモニターの表示について、前回の対策が逆効果だったため、以前の(うたコレの情報がほとんどの場合正しく表示されていた)方式に戻しました',
+      '詳細フィルタの作詩・作曲欄で、何も入力しなくても、登録済みの名前一覧をプルダウンから選べるようにしました',
+      '詳細フィルタの作詩・作曲欄で、登録済みの名前をプルダウンから選べるようにしました(最近使ったもの・よく使うものが上位に表示されます)',
+      '車のモニターで、たまにうたコレの登録内容ではなくYouTube側の動画タイトル・投稿者名が表示されてしまうことがある問題への対策をしました',
+      'コレクション一覧で、下にスクロールして曲を追加読み込みする際、まれに読み込みが止まってしまうことがある不具合を修正しました',
+      '曲の登録画面に「組曲タイトルのよみがな」欄を追加しました(組曲名での並び替え精度が上がります)',
+      'スマホで曲を登録するときに、ポップアップの許可を毎回聞かれてしまう問題を直しました',
+    ],
+  },
+  {
+    version: '2026-08-21',
+    items: [
+      '曲の詳細画面から共有した時、その曲だけが選ばれた状態で共有できるようにしました',
+      '動画のプレイリスト再生中は、スマホを振ってシャッフルする機能を自動的にオフにするようにしました',
+      '共有用のURLを短くしました',
+      '共有したリンクをX(旧Twitter)などのSNSに貼った時に、アプリの案内画像が表示されるようにしました',
+      '曲の並び順に「歌った日が新しい順・古い順」を追加しました',
+      '「組曲でまとめて表示する」機能で、絞り込み条件によって組曲の一部の曲しか表示されないことがある不具合を直しました',
+      'ダークモードの試作テーマ(試作002)を追加し、見えにくかった文字色を修正しました',
+      'Googleドライブ連携で、別の端末から同じアカウントでログインした時に、意図せず別のプロフィールが作られてしまう不具合を修正しました',
+    ],
+  },
+  {
+    version: '2026-08-18',
+    items: [
+      '車のBluetooth/CarPlayの「次へ」「前へ」ボタンで、プレイリストの再生を操作できるようにしました',
+      '「スマホを振ってシャッフル」のオン・オフをマイページで設定できるようにしました',
+      'YouTubeの動画情報から曲を登録する際の表記を分かりやすく整理しました',
+    ],
+  },
+];
+
+function getLatestChangelogVersion() {
+  return CHANGELOG.length ? CHANGELOG[0].version : '';
+}
+function loadLastSeenChangelogVersion() {
+  try { return localStorage.getItem(LAST_SEEN_CHANGELOG_KEY) || ''; } catch (e) { return ''; }
+}
+function saveLastSeenChangelogVersion(version) {
+  try { localStorage.setItem(LAST_SEEN_CHANGELOG_KEY, version); } catch (e) { /* noop */ }
+}
 
 function driveAuthHeader(token) {
   return { Authorization: `Bearer ${token}` };
@@ -339,6 +391,24 @@ const THEMES = [
     shadowModal: '0 20px 44px rgba(0,0,0,.18)',
     flatBar: true, // Apple系ではウィンドウ上部の虹色グラデーションバーを非表示にする
   },
+  {
+    id: 'apple-dark', name: '試作002', category: 'apple',
+    // ダークモード: 黒背景に白文字を基本とした配色
+    paper: '#0A0A0A', ink: '#F2F2F2', inkSoft: '#BDBDC2',
+    wine: '#0A84FF', wineSoft: '#16273A',
+    gold: '#FF9F0A', goldSoft: '#3A2A12',
+    sage: '#30D158', sageSoft: '#12321E',
+    line: '#2C2C2E',
+    surface: '#1C1C1E', // カード・入力欄などの一段明るい面(白決め打ちだったところをここで上書き)
+    danger: '#FF6B5B', // エラー・警告文字色。黒背景でも読めるよう明るめの赤に
+    goldText: '#FFC670', // イベント関連の文字色。黒背景でも読めるよう明るめの黄に
+    fontDisplay: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif',
+    fontBody: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif',
+    radiusControl: 10, radiusCard: 16, radiusPill: 999,
+    shadowCard: '0 1px 2px rgba(0,0,0,.4), 0 1px 1px rgba(0,0,0,.3)',
+    shadowModal: '0 20px 44px rgba(0,0,0,.6)',
+    flatBar: true,
+  },
 ];
 const THEME_CATEGORIES = [
   { id: 'classic-wa', label: '和・クラシカル' },
@@ -425,7 +495,7 @@ function getYoutubeThumbnail(url) {
 
 /* ---- CSV一括登録 ---- */
 
-const CSV_HEADERS = ['曲名', 'よみがな', '組曲の種類', '組曲タイトル', '組曲内での順番', '作詩', '作曲', '編曲', '発表年', '編成', '伴奏', '言語', '動画URL', '楽譜入手先', 'タグ'];
+const CSV_HEADERS = ['曲名', 'よみがな', '組曲の種類', '組曲タイトル', '組曲タイトルのよみがな', '組曲内での順番', '作詩', '作曲', '編曲', '発表年', '編成', '伴奏', '言語', '動画URL', '楽譜入手先', 'タグ'];
 
 function buildCsvTemplate() {
   const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
@@ -474,6 +544,7 @@ function parseCsvRows(rows) {
       titleKana: get('よみがな'),
       suiteGenre: get('組曲の種類'),
       suiteTitle: get('組曲タイトル'),
+      suiteTitleKana: get('組曲タイトルのよみがな'),
       suiteOrder: suiteOrderRaw ? Number(suiteOrderRaw) : '',
       lyricist, composer,
       arranger: mergeName(get('編曲')),
@@ -493,6 +564,7 @@ function songsToCsv(songs) {
     'よみがな': s.titleKana || '',
     '組曲の種類': s.suiteGenre || '',
     '組曲タイトル': s.suiteTitle || '',
+    '組曲タイトルのよみがな': s.suiteTitleKana || '',
     '組曲内での順番': s.suiteOrder === '' || s.suiteOrder == null ? '' : s.suiteOrder,
     '作詩': s.lyricist || '',
     '作曲': s.composer || '',
@@ -972,7 +1044,7 @@ function encodeQR(text, ecLevelLetter = 'M') {
    Ver.2でこの値をtrueに戻せば復活する。 */
 const SOCIAL_FEATURES_ENABLED = false;
 
-const SHARE_URL_BASE = 'https://sunplusnetwork-del.github.io/Utacolle/';
+const SHARE_URL_BASE = 'https://utacolle.com/';
 const SHARE_QR_SAFE_LIMIT = 1200; // 文字数。これを超えるとQRの読み取り信頼性が下がる
 
 function songDupKey(s) {
@@ -992,7 +1064,7 @@ function mergeSongInfo(existing, incoming, fields) {
   return next;
 }
 function overwriteSongInfo(existing, incoming) {
-  const fields = ['title', 'suiteGenre', 'suiteTitle', 'lyricist', 'composer', 'arranger', 'year', 'formation', 'formationOther', 'accompaniment', 'accompanimentOther', 'language', 'languageOther', 'videoUrl', 'scoreSource'];
+  const fields = ['title', 'titleKana', 'suiteGenre', 'suiteTitle', 'suiteTitleKana', 'lyricist', 'composer', 'arranger', 'year', 'formation', 'formationOther', 'accompaniment', 'accompanimentOther', 'language', 'languageOther', 'videoUrl', 'scoreSource'];
   const next = { ...existing };
   fields.forEach((k) => { next[k] = incoming[k]; });
   next.updatedAt = Date.now();
@@ -1037,7 +1109,7 @@ function SongCompareCard({ existing, incoming }) {
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: '58px 1fr 1fr', gap: '4px 8px', alignItems: 'center',
-      fontSize: 11.5, background: '#fff', border: '1px solid var(--line)', borderRadius: 6, padding: '8px 10px', margin: '6px 0',
+      fontSize: 11.5, background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 6, padding: '8px 10px', margin: '6px 0',
     }}>
       <div />
       <div style={{ fontWeight: 600, color: 'var(--ink-soft)' }}>登録済み</div>
@@ -1074,7 +1146,7 @@ const DUP_ACTION_OPTIONS = [
 ];
 const MERGE_FIELD_GROUPS = [
   { key: 'suiteGenre', label: '組曲の種類', fields: ['suiteGenre'] },
-  { key: 'suiteTitle', label: '組曲タイトル', fields: ['suiteTitle'] },
+  { key: 'suiteTitle', label: '組曲タイトル', fields: ['suiteTitle', 'suiteTitleKana'] },
   { key: 'arranger', label: '編曲', fields: ['arranger'] },
   { key: 'year', label: '発表年', fields: ['year'] },
   { key: 'formation', label: '編成', fields: ['formation', 'formationOther'] },
@@ -1125,7 +1197,7 @@ function DupActionPicker({ existing, incoming, value, onChange, name }) {
       {mode === 'merge' && eligibleGroups.length > 0 && (
         <div style={{
           display: 'flex', flexWrap: 'wrap', gap: 8, marginLeft: 19, marginTop: 2,
-          padding: '6px 8px', background: '#fff', borderRadius: 6, border: '1px solid var(--line)',
+          padding: '6px 8px', background: 'var(--surface, #fff)', borderRadius: 6, border: '1px solid var(--line)',
         }}>
           {eligibleGroups.map((g) => (
             <label key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, cursor: 'pointer' }}>
@@ -1141,8 +1213,10 @@ function DupActionPicker({ existing, incoming, value, onChange, name }) {
 
 function songToShareEntry(s) {
   const e = { t: s.title, ly: s.lyricist, co: s.composer, fo: s.formation };
+  if (s.titleKana) e.tk = s.titleKana;
   if (s.suiteGenre) e.sg = s.suiteGenre;
   if (s.suiteTitle) e.st = s.suiteTitle;
+  if (s.suiteTitleKana) e.stk = s.suiteTitleKana;
   if (s.arranger) e.ar = s.arranger;
   if (s.year) e.y = s.year;
   if (s.formationOther) e.foO = s.formationOther;
@@ -1158,7 +1232,7 @@ function songToShareEntry(s) {
 function shareEntryToSong(e) {
   return {
     ...emptySongDraft(),
-    title: e.t || '', suiteGenre: e.sg || '', suiteTitle: e.st || '',
+    title: e.t || '', titleKana: e.tk || '', suiteGenre: e.sg || '', suiteTitle: e.st || '', suiteTitleKana: e.stk || '',
     lyricist: e.ly || '', composer: e.co || '', arranger: e.ar || '',
     year: e.y || '', formation: e.fo || '', formationOther: e.foO || '',
     accompaniment: e.ac || '', accompanimentOther: e.acO || '',
@@ -1177,11 +1251,64 @@ function base64UrlDecode(str) {
   return decodeURIComponent(escape(atob(b64)));
 }
 
+function base64UrlEncodeBytes(bytes) {
+  let binary = '';
+  bytes.forEach((b) => { binary += String.fromCharCode(b); });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function base64UrlDecodeBytes(str) {
+  let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/* ---- 共有URLを短くするための圧縮(gzip/deflate)付きエンコード ----
+   対応ブラウザ(CompressionStream/DecompressionStreamが使える。主要ブラウザはほぼ対応)では、
+   JSONをdeflateで圧縮してからbase64にする。先頭に "z:" を付けて圧縮版だと分かるようにする
+   (base64urlの文字にコロン":"は絶対に現れないので、旧形式のリンクと誤認することはない)。
+   非対応ブラウザや、圧縮しても逆に大きくなってしまう極端に短いデータの場合は、
+   従来通りの無圧縮のbase64(先頭"z:"なし)にそのままフォールバックする。
+   → 古い(圧縮対応前の)共有リンクも、先頭に"z:"が無い形式として引き続き読み取れる(後方互換)。 */
+async function compactEncodeJSON(obj) {
+  const json = JSON.stringify(obj);
+  const bytes = new TextEncoder().encode(json);
+  if (typeof CompressionStream !== 'undefined') {
+    try {
+      const cs = new CompressionStream('deflate-raw');
+      const stream = new Blob([bytes]).stream().pipeThrough(cs);
+      const buf = await new Response(stream).arrayBuffer();
+      const compressed = new Uint8Array(buf);
+      if (compressed.length < bytes.length) {
+        return 'z:' + base64UrlEncodeBytes(compressed);
+      }
+    } catch (e) {
+      // 圧縮に失敗しても致命的ではないので、下の無圧縮版にフォールバックする
+    }
+  }
+  return base64UrlEncodeBytes(bytes);
+}
+async function compactDecodeJSON(str) {
+  const isCompressed = str.startsWith('z:');
+  const body = isCompressed ? str.slice(2) : str;
+  const bytes = base64UrlDecodeBytes(body);
+  if (!isCompressed) return new TextDecoder().decode(bytes);
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('お使いのブラウザは、この共有リンクの読み込みに対応していません。ブラウザを最新版に更新してください。');
+  }
+  const ds = new DecompressionStream('deflate-raw');
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  const buf = await new Response(stream).arrayBuffer();
+  return new TextDecoder().decode(buf);
+}
+
 /* ---- 曲リスト共有(type: 'songs') ---- */
 
 function encodeSharePayload(fromName, songs) {
   const payload = { v: 2, ty: 'songs', from: fromName || '', songs: songs.map(songToShareEntry) };
-  return base64UrlEncode(JSON.stringify(payload));
+  return compactEncodeJSON(payload);
 }
 
 /* ---- 曲リスト共有(type: 'songs-drive'、大量共有向け) ----
@@ -1190,7 +1317,7 @@ function encodeSharePayload(fromName, songs) {
 
 function encodeDriveSharePayload(fromName, driveFileId) {
   const payload = { v: 1, ty: 'songs-drive', from: fromName || '', fid: driveFileId };
-  return base64UrlEncode(JSON.stringify(payload));
+  return compactEncodeJSON(payload);
 }
 
 /* ---- イベント参加(type: 'event') ---- */
@@ -1200,7 +1327,7 @@ function encodeEventPayload(eventName, eventDate, hostName) {
     v: 2, ty: 'event', id: genId('evt'),
     n: eventName, d: eventDate || '', from: hostName || '',
   };
-  return base64UrlEncode(JSON.stringify(payload));
+  return compactEncodeJSON(payload);
 }
 
 /* ---- プロフィール共有(type: 'profile') ---- */
@@ -1211,13 +1338,13 @@ function encodeProfilePayload(user) {
   };
   const age = ageLabel(user);
   if (age) payload.age = age;
-  return base64UrlEncode(JSON.stringify(payload));
+  return compactEncodeJSON(payload);
 }
 
 /* ---- 共通デコード ---- */
 
-function decodeSharePayload(encoded) {
-  const payload = JSON.parse(base64UrlDecode(encoded));
+async function decodeSharePayload(encoded) {
+  const payload = JSON.parse(await compactDecodeJSON(encoded));
   if (!payload || typeof payload !== 'object') throw new Error('invalid payload');
 
   // v1(旧・曲リストのみ)との後方互換
@@ -1300,9 +1427,9 @@ function normalizeForSort(s) {
 function sortSongs(songs, sortKey, randomSeed = '') {
   const list = [...songs];
   const titleCompare = (a, b) => {
-    // 組曲名がある場合は組曲名を優先してまとめ、組曲内は曲名(よみがな優先)順にする
-    const ak = normalizeForSort(a.suiteTitle || a.title);
-    const bk = normalizeForSort(b.suiteTitle || b.title);
+    // 組曲名がある場合は組曲名(よみがな優先)を優先してまとめ、組曲内は曲名(よみがな優先)順にする
+    const ak = normalizeForSort(a.suiteTitleKana || a.suiteTitle || a.title);
+    const bk = normalizeForSort(b.suiteTitleKana || b.suiteTitle || b.title);
     const cmp = ak.localeCompare(bk, 'ja', { numeric: true, sensitivity: 'base' });
     if (cmp !== 0) return cmp;
     const at = normalizeForSort(a.titleKana || a.title);
@@ -1341,6 +1468,16 @@ function isStandaloneApp() {
   const byMediaQuery = !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
   const byIosFlag = window.navigator && window.navigator.standalone === true; // iOSのホーム画面追加時
   return byMediaQuery || byIosFlag;
+}
+
+// スマホ・タブレットかどうかの判定。ホーム画面に追加済みかどうか(isStandaloneApp)を問わず、
+// タッチ操作の小さい画面では別ウィンドウ(ポップアップ)を使わないようにするために使う。
+// ポップアップはスマホのブラウザだと毎回「許可しますか」と聞かれてしまい体験が悪いため。
+function isMobileDevice() {
+  if (typeof window === 'undefined') return false;
+  const byUserAgent = /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent || '');
+  const byPointerAndWidth = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) && window.innerWidth < 900;
+  return byUserAgent || byPointerAndWidth;
 }
 
 /* ---- 他アプリの「共有」から届いたリンクの解析(Web Share Target) ---- */
@@ -1400,7 +1537,7 @@ async function saveSession(session) {
 
 function emptySongDraft() {
   return {
-    title: '', titleKana: '', suiteGenre: '', suiteTitle: '', suiteOrder: '',
+    title: '', titleKana: '', suiteGenre: '', suiteTitle: '', suiteTitleKana: '', suiteOrder: '',
     lyricist: '', composer: '', arranger: '',
     year: '', formation: '', formationOther: '', accompaniment: '',
     accompanimentOther: '', language: '', languageOther: '', videoUrl: '', scoreSource: '',
@@ -1579,7 +1716,7 @@ function Field({ label, required, children }) {
 const inputStyle = {
   width: '100%', boxSizing: 'border-box', padding: '9px 11px',
   border: '1px solid var(--line)', borderRadius: 'var(--radius-control, 6px)', fontSize: 14,
-  fontFamily: 'var(--font-body)', color: 'var(--ink)', background: '#fff',
+  fontFamily: 'var(--font-body)', color: 'var(--ink)', background: 'var(--surface, #fff)',
   outline: 'none',
 };
 
@@ -1593,6 +1730,31 @@ function TextArea(props) {
 
 const SEED_LYRICISTS = ['谷川俊太郎', '高野喜久雄', '大木惇夫', '三好達治', '萩原朔太郎', '宮沢賢治'];
 const SEED_COMPOSERS = ['三善晃', '信長貴富', '木下牧子', '新実徳英', '荻久保和明', '鈴木輝昭', '千原英喜'];
+
+// 作詩・作曲などの入力候補(プルダウン)を、優先順位1「最近使ったものが上位」→
+// 優先順位2「登録件数が多いものが上位」の順に並べて返す。
+// seedはデータが少ない最初のうちの候補で、実際に使われたことがなければ一覧の末尾に回る。
+function buildNameSuggestions(songs, field, seed = []) {
+  const stats = new Map(); // name -> { count, lastAt }
+  songs.forEach((s) => {
+    const name = (s[field] || '').trim();
+    if (!name) return;
+    const at = s.updatedAt || s.createdAt || 0;
+    const cur = stats.get(name);
+    if (cur) {
+      cur.count += 1;
+      if (at > cur.lastAt) cur.lastAt = at;
+    } else {
+      stats.set(name, { count: 1, lastAt: at });
+    }
+  });
+  seed.forEach((name) => {
+    if (!stats.has(name)) stats.set(name, { count: 0, lastAt: 0 });
+  });
+  return Array.from(stats.entries())
+    .sort((a, b) => (b[1].lastAt - a[1].lastAt) || (b[1].count - a[1].count))
+    .map(([name]) => name);
+}
 const SEED_ARRANGERS = ['信長貴富', '瑞木薫', '弓削田健介'];
 
 function SuggestInput({ value, onChange, suggestions = [], placeholder, style }) {
@@ -1600,9 +1762,12 @@ function SuggestInput({ value, onChange, suggestions = [], placeholder, style })
   const [highlight, setHighlight] = useState(-1);
 
   const q = value.trim().toLowerCase();
+  // 何も入力していない時は、候補(すでに「最近使った順→登録件数が多い順」に並んでいる)を
+  // そのまま一覧表示できるようにする(入力せずにプルダウンから選べるようにしたいという要望のため)。
+  // 入力中は絞り込んだ候補を表示する。
   const matches = q
     ? suggestions.filter((s) => s.toLowerCase().includes(q) && s !== value).slice(0, 6)
-    : [];
+    : suggestions.slice(0, 12);
 
   const selectItem = (item) => {
     onChange(item);
@@ -1629,7 +1794,7 @@ function SuggestInput({ value, onChange, suggestions = [], placeholder, style })
       />
       {open && matches.length > 0 && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#fff',
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: 'var(--surface, #fff)',
           border: '1px solid var(--line)', borderRadius: 8, marginTop: 4,
           boxShadow: '0 8px 20px rgba(0,0,0,.12)', overflow: 'hidden',
         }}>
@@ -1656,9 +1821,12 @@ function NameField({ label, required, value, onChange, placeholder, suggestions 
   const [highlight, setHighlight] = useState(-1);
 
   const q = value.trim().toLowerCase();
+  // 何も入力していない時は、候補(すでに「最近使った順→登録件数が多い順」に並んでいる)を
+  // そのまま一覧表示できるようにする(入力せずにプルダウンから選べるようにしたいという要望のため)。
+  // 入力中は絞り込んだ候補を表示する。
   const matches = q
     ? suggestions.filter((s) => s.toLowerCase().includes(q) && s !== value).slice(0, 6)
-    : [];
+    : suggestions.slice(0, 12);
 
   const selectItem = (item) => {
     onChange(item);
@@ -1685,7 +1853,7 @@ function NameField({ label, required, value, onChange, placeholder, suggestions 
         />
         {open && matches.length > 0 && (
           <div style={{
-            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: '#fff',
+            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 40, background: 'var(--surface, #fff)',
             border: '1px solid var(--line)', borderRadius: 8, marginTop: 4,
             boxShadow: '0 8px 20px rgba(0,0,0,.12)', overflow: 'hidden',
           }}>
@@ -1746,7 +1914,7 @@ function ToggleSwitch({ checked, onChange, leftLabel, rightLabel }) {
       >
         <span style={{
           position: 'absolute', top: 2, left: checked ? 20 : 2, width: 18, height: 18, borderRadius: '50%',
-          background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.3)', transition: 'left .15s ease',
+          background: 'var(--surface, #fff)', boxShadow: '0 1px 3px rgba(0,0,0,.3)', transition: 'left .15s ease',
         }} />
       </span>
       <span style={{ fontSize: 12.5, fontWeight: checked ? 700 : 400, color: checked ? 'var(--ink)' : 'var(--ink-soft)' }}>
@@ -1758,10 +1926,10 @@ function ToggleSwitch({ checked, onChange, leftLabel, rightLabel }) {
 
 function Button({ children, onClick, variant = 'default', style, disabled, title }) {
   const variants = {
-    default: { background: '#fff', color: 'var(--ink)', border: '1px solid var(--line)' },
+    default: { background: 'var(--surface, #fff)', color: 'var(--ink)', border: '1px solid var(--line)' },
     primary: { background: 'var(--wine)', color: '#fff', border: '1px solid var(--wine)' },
     quiet: { background: 'transparent', color: 'var(--ink-soft)', border: '1px solid transparent' },
-    danger: { background: 'transparent', color: '#9C3B2E', border: '1px solid #E8CFC8' },
+    danger: { background: 'transparent', color: 'var(--danger, #9C3B2E)', border: '1px solid #E8CFC8' },
     gold: { background: 'var(--gold)', color: '#fff', border: '1px solid var(--gold)' },
     sage: { background: 'var(--sage)', color: '#fff', border: '1px solid var(--sage)' },
   };
@@ -1821,7 +1989,9 @@ function Toast({ text }) {
   return (
     <div style={{
       position: 'fixed', bottom: 22, left: '50%', transform: 'translateX(-50%)',
-      background: 'var(--ink)', color: '#F3EEE1', padding: '10px 18px', borderRadius: 8,
+      // トーストは常に「暗い背景+明るい文字」の組み合わせで表示する(テーマの文字色を流用すると、
+      // ダークテーマのように文字色自体が明るい場合に背景まで明るくなり、文字と同化してしまうため)。
+      background: '#1C1C1E', color: '#F3EEE1', padding: '10px 18px', borderRadius: 8,
       fontSize: 13.5, fontFamily: 'var(--font-body)', zIndex: 200, boxShadow: '0 6px 18px rgba(0,0,0,.2)',
       display: 'flex', alignItems: 'center', gap: 8,
     }}>
@@ -1918,7 +2088,7 @@ function AdGateModal({ seconds, onComplete, onCancel, label }) {
           </div>
         )}
       </div>
-      <div style={{ background: '#fff', padding: '16px 20px 20px', textAlign: 'center', flexShrink: 0 }}>
+      <div style={{ background: 'var(--surface, #fff)', padding: '16px 20px 20px', textAlign: 'center', flexShrink: 0 }}>
         <div style={{ fontSize: 11.5, color: 'var(--ink-soft)', marginBottom: 8 }}>{label || '広告'}</div>
         <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 12px' }}>
           {done ? '広告の表示が終わりました。' : `広告表示中です。あと${remaining}秒でスキップできます。`}
@@ -1948,7 +2118,7 @@ function DeleteAccountConfirmModal({ onClose, onConfirm, deleting, googleSignedI
   const canConfirm = confirmText === '削除';
   return (
     <ModalShell onClose={onClose} width={400}>
-      <h3 style={{ fontFamily: 'var(--font-display)', margin: '0 0 8px', color: '#9C3B2E' }}>
+      <h3 style={{ fontFamily: 'var(--font-display)', margin: '0 0 8px', color: 'var(--danger, #9C3B2E)' }}>
         本当にアカウントを削除しますか?
       </h3>
       <ul style={{ fontSize: 12.5, color: 'var(--ink-soft)', lineHeight: 1.8, paddingLeft: '1.2em', margin: '0 0 14px' }}>
@@ -2005,6 +2175,43 @@ function ModalShell({ onClose, children, width = 480, background = 'var(--paper)
   );
 }
 
+/* ---- お知らせ(更新履歴)モーダル ----
+   sinceVersion指定時は、それより新しい項目だけを表示する(起動時の「前回からの変更点」用)。
+   指定なしなら、全履歴を表示する(マイページの「お知らせ」から開く用)。 */
+function WhatsNewModal({ onClose, sinceVersion }) {
+  const entries = sinceVersion
+    ? CHANGELOG.filter((c) => c.version > sinceVersion)
+    : CHANGELOG;
+  return (
+    <ModalShell onClose={onClose} width={480}>
+      <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>
+        {sinceVersion ? 'アップデートのお知らせ' : 'お知らせ'}
+      </h2>
+      <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 16px' }}>
+        {sinceVersion ? '前回お使いいただいてから、以下の変更がありました。' : 'これまでの更新履歴です。'}
+      </p>
+      <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+        {entries.map((c) => (
+          <div key={c.version} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--wine)', marginBottom: 6 }}>{c.version}</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {c.items.map((it, i) => (
+                <li key={i} style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--ink)' }}>{it}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {entries.length === 0 && (
+          <p style={{ fontSize: 13, color: 'var(--ink-soft)' }}>お知らせはありません。</p>
+        )}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <Button variant="primary" onClick={onClose}><Check size={13} /> 閉じる</Button>
+      </div>
+    </ModalShell>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  チケット風・曲カード                                                */
 /* ------------------------------------------------------------------ */
@@ -2044,6 +2251,27 @@ const SILENT_AUDIO_DATA_URI = 'data:audio/wav;base64,UklGRqQ+AABXQVZFZm10IBAAAAA
 
 function PlaylistPlayer({ songs, onClose }) {
   const [index, setIndex] = useState(0);
+  const indexRef = useRef(0);
+  indexRef.current = index;
+  // 車のディスプレイ等に表示する曲情報(うたコレ側の登録内容)を適用する関数。
+  // 曲切り替え直後の複数回の再適用と、YouTube側の再生開始タイミングでの再適用の両方から使う。
+  // indexRef経由で常に最新のindexを参照するため、依存配列を空にでき、マウント時に1度だけ作られる
+  // YouTubeプレイヤーのonStateChangeハンドラ(下記)から呼んでも、曲が切り替わった後の古い曲を
+  // 参照してしまう(クロージャが古いままになる)ことがない。
+  const applyMediaSessionMetadata = useCallback(() => {
+    if (!('mediaSession' in navigator)) return;
+    const latest = songsRef.current[indexRef.current];
+    if (!latest) return;
+    const vid = getYoutubeVideoId(latest.videoUrl);
+    navigator.mediaSession.metadata = new window.MediaMetadata({
+      title: latest.title || 'うたコレ',
+      artist: [latest.lyricist, latest.composer].filter(Boolean).join(' / '),
+      album: 'うたコレ',
+      artwork: vid ? [
+        { src: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' },
+      ] : [],
+    });
+  }, []);
   const [ready, setReady] = useState(false);
   const [muted, setMuted] = useState(true);
   const playerRef = useRef(null);
@@ -2078,6 +2306,12 @@ function PlaylistPlayer({ songs, onClose }) {
 
   useEffect(() => {
     let destroyed = false;
+    // 再生画面が開いた直後(元をたどれば「再生」ボタンのタップ操作の延長)に、できるだけ早い
+    // タイミングで無音オーディオの再生を試みる。1曲目のYouTube側の読み込みには少し時間がかかり、
+    // その間に操作(タップ)からの猶予期間が切れてブラウザに自動再生をブロックされることがあり、
+    // これが「1曲目だけ車のボタンが反応しない」原因になっていた。ここで早めに試すことで、
+    // 1曲目の再生開始と同時に車のNow Playing連携が有効になるようにする。
+    if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
     const firstVideoId = getYoutubeVideoId(songsRef.current[0]?.videoUrl);
     loadYouTubeIframeAPI().then(() => {
       if (destroyed || !containerRef.current) return;
@@ -2136,22 +2370,14 @@ function PlaylistPlayer({ songs, onClose }) {
     };
   }, [goNext, goPrev]);
 
-  // 曲が変わるたびに、車のディスプレイやスマホのロック画面に表示される曲名・アーティスト・サムネイルを更新
+  // 曲が変わるたびに、車のディスプレイやスマホのロック画面に表示される曲名・アーティスト・サムネイルを更新。
   useEffect(() => {
-    if (!('mediaSession' in navigator)) return;
+    if (!('mediaSession' in navigator)) return undefined;
     const current = songsRef.current[index];
-    if (!current) return;
-    const vid = getYoutubeVideoId(current.videoUrl);
-    navigator.mediaSession.metadata = new window.MediaMetadata({
-      title: current.title || 'うたコレ',
-      artist: [current.lyricist, current.composer].filter(Boolean).join(' / '),
-      album: 'うたコレ',
-      artwork: vid ? [
-        { src: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' },
-      ] : [],
-    });
-  }, [index, songs]);
-
+    if (!current) return undefined;
+    applyMediaSessionMetadata();
+    return undefined;
+  }, [index, songs, applyMediaSessionMetadata]);
   const unmute = () => {
     if (playerRef.current) {
       playerRef.current.unMute();
@@ -2205,7 +2431,7 @@ function PlaylistPlayer({ songs, onClose }) {
           <X size={16} />
         </button>
       </div>
-      <div style={{ background: '#fff', padding: '14px 18px 18px', flexShrink: 0 }}>
+      <div style={{ background: 'var(--surface, #fff)', padding: '14px 18px 18px', flexShrink: 0 }}>
         <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 2 }}>{index + 1} / {songs.length}曲 再生中</div>
         <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {current?.title}
@@ -2487,7 +2713,7 @@ function SuiteGroupCard({ suiteTitle, suiteGenre, songs, renderSong, onReorder }
   };
 
   return (
-    <div style={{ border: '1px solid var(--line)', borderRadius: 10, marginBottom: 10, overflow: 'hidden', background: '#fff' }}>
+    <div style={{ border: '1px solid var(--line)', borderRadius: 10, marginBottom: 10, overflow: 'hidden', background: 'var(--surface, #fff)' }}>
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
@@ -2555,7 +2781,7 @@ function SuiteGroupCard({ suiteTitle, suiteGenre, songs, renderSong, onReorder }
 function SongCard({ song, ownerName, isMine, onEdit, onDelete, onShare, onCopy, onOpen, alreadyCopied, compact, selectable, selected, onToggleSelect, onViewDetail }) {
   const suiteLabel = song.suiteTitle
     ? `${song.suiteGenre ? song.suiteGenre + ' ' : ''}『${song.suiteTitle}』より`
-    : '';
+    : (song.suiteGenre || ''); // 組曲名が空でも、組曲の種類だけ入力されていれば「より」を付けずそのまま表示する
   const visibleTags = isMine
     ? (song.tags || [])
     : (song.tags || []).filter((t) => t.visibility === 'public');
@@ -2563,7 +2789,7 @@ function SongCard({ song, ownerName, isMine, onEdit, onDelete, onShare, onCopy, 
   if (compact) {
     return (
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, background: '#fff',
+        display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface, #fff)',
         border: '1px solid var(--line)', borderRadius: 'var(--radius-control, 8px)', padding: '10px 14px', marginBottom: 8,
         cursor: onOpen ? 'pointer' : 'default',
       }} onClick={onOpen}>
@@ -2600,7 +2826,7 @@ function SongCard({ song, ownerName, isMine, onEdit, onDelete, onShare, onCopy, 
 
   return (
     <div style={{
-      position: 'relative', display: 'flex', flexDirection: 'column', background: '#fff',
+      position: 'relative', display: 'flex', flexDirection: 'column', background: 'var(--surface, #fff)',
       border: '1px solid var(--line)', borderRadius: 'var(--radius-card, 8px)', overflow: 'hidden', marginBottom: 14,
       boxShadow: 'var(--shadow-card, none)',
     }}>
@@ -2644,7 +2870,10 @@ function SongCard({ song, ownerName, isMine, onEdit, onDelete, onShare, onCopy, 
         </div>
         {(song.videoUrl || song.scoreSource) && (
           <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-            {song.videoUrl && (
+            {/* 動画への直接リンクは、自分の曲(isMine)の時だけ表示する。共有・限定公開の動画で、
+                視聴者が直接YouTube側のURLへ抜けられないようにし、埋め込み再生(VideoThumb)や
+                プレイリスト再生の中だけで観てもらう形にするため。 */}
+            {song.videoUrl && isMine && (
               <a
                 href={song.videoUrl} target="_blank" rel="noreferrer"
                 onClick={(e) => e.stopPropagation()}
@@ -2742,7 +2971,7 @@ const linkStyle = {
 
 const iconLinkStyle = {
   width: 34, height: 34, borderRadius: '50%', border: '1px solid var(--line)',
-  background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  background: 'var(--surface, #fff)', display: 'flex', alignItems: 'center', justifyContent: 'center',
   color: 'var(--wine)', flexShrink: 0,
 };
 
@@ -2750,8 +2979,8 @@ function IconBtn({ children, onClick, danger, disabled, title }) {
   return (
     <button title={title} disabled={disabled} onClick={onClick} style={{
       width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--line)',
-      background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: disabled ? 'var(--ink-soft)' : (danger ? '#9C3B2E' : 'var(--ink)'),
+      background: 'var(--surface, #fff)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: disabled ? 'var(--ink-soft)' : (danger ? 'var(--danger, #9C3B2E)' : 'var(--ink)'),
       cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
     }}>
       {children}
@@ -2763,7 +2992,7 @@ function Tag({ children, color }) {
   const map = {
     wine: { bg: 'var(--wine-soft)', fg: 'var(--wine)' },
     sage: { bg: 'var(--sage-soft)', fg: 'var(--sage)' },
-    gold: { bg: 'var(--gold-soft)', fg: '#8a6a34' },
+    gold: { bg: 'var(--gold-soft)', fg: 'var(--gold-text, #8a6a34)' },
   };
   const c = map[color] || map.wine;
   return (
@@ -2777,7 +3006,7 @@ function Tag({ children, color }) {
 function TagCycleChip({ name, state, onClick }) {
   // state: 'none' | 'public' | 'private'
   const styles = {
-    none: { border: '1px solid var(--line)', background: '#fff', color: 'var(--ink-soft)' },
+    none: { border: '1px solid var(--line)', background: 'var(--surface, #fff)', color: 'var(--ink-soft)' },
     public: { border: '1px solid var(--wine)', background: 'var(--wine-soft)', color: 'var(--wine)' },
     private: { border: '1px solid var(--sage)', background: 'var(--sage-soft)', color: 'var(--sage)' },
   };
@@ -2815,6 +3044,9 @@ function SongFilterBar({ filters, setFilters, sort, setSort, songs = [], onShuff
     songs.forEach((s) => (s.tags || []).forEach((t) => names.add(t.name)));
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'ja'));
   }, [songs]);
+  // 詳細フィルタの作詩・作曲欄用のプルダウン候補。「最近使った順→登録件数が多い順」に並べる。
+  const lyricistFilterSuggestions = useMemo(() => buildNameSuggestions(songs, 'lyricist'), [songs]);
+  const composerFilterSuggestions = useMemo(() => buildNameSuggestions(songs, 'composer'), [songs]);
 
   const toggleTag = (name) => {
     setFilters((prev) => {
@@ -2862,16 +3094,16 @@ function SongFilterBar({ filters, setFilters, sort, setSort, songs = [], onShuff
 
       {expanded && (
         <div style={{
-          display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, background: '#fff',
+          display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10, background: 'var(--surface, #fff)',
           border: '1px solid var(--line)', borderRadius: 10, padding: 14,
         }}>
           <div style={{ flex: 1, minWidth: 140 }}>
             <label style={{ fontSize: 11.5, color: 'var(--ink-soft)', display: 'block', marginBottom: 4 }}>作詩</label>
-            <TextInput value={filters.lyricist} onChange={(e) => setField('lyricist')(e.target.value)} placeholder="例: 谷川" />
+            <SuggestInput value={filters.lyricist} onChange={setField('lyricist')} suggestions={lyricistFilterSuggestions} placeholder="例: 谷川" />
           </div>
           <div style={{ flex: 1, minWidth: 140 }}>
             <label style={{ fontSize: 11.5, color: 'var(--ink-soft)', display: 'block', marginBottom: 4 }}>作曲</label>
-            <TextInput value={filters.composer} onChange={(e) => setField('composer')(e.target.value)} placeholder="例: 三善" />
+            <SuggestInput value={filters.composer} onChange={setField('composer')} suggestions={composerFilterSuggestions} placeholder="例: 三善" />
           </div>
           <div style={{ flex: 1, minWidth: 140 }}>
             <label style={{ fontSize: 11.5, color: 'var(--ink-soft)', display: 'block', marginBottom: 4 }}>編成</label>
@@ -2998,7 +3230,7 @@ function ImageCropModal({ file, onCancel, onConfirm }) {
       title={label}
       aria-label={label}
       style={{
-        width: 38, height: 38, borderRadius: 8, border: '1px solid var(--line)', background: '#fff',
+        width: 38, height: 38, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface, #fff)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: disabled ? 'default' : 'pointer',
         color: disabled ? 'var(--line)' : 'var(--ink)',
       }}
@@ -3014,7 +3246,7 @@ function ImageCropModal({ file, onCancel, onConfirm }) {
         矢印ボタンで位置を、スライダーで拡大率を調整して、顔がちょうどいい大きさになるようにしてください。
       </p>
       {loadError && (
-        <p style={{ fontSize: 12.5, color: '#9C3B2E', margin: '0 0 14px' }}>{loadError}</p>
+        <p style={{ fontSize: 12.5, color: 'var(--danger, #9C3B2E)', margin: '0 0 14px' }}>{loadError}</p>
       )}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
         <div
@@ -3147,7 +3379,7 @@ function ProfileForm({ initial, existingIds, onSave, onCancel, isNew, disabled }
                 <X size={13} /> 削除
               </Button>
             )}
-            {imgError && <p style={{ color: '#9C3B2E', fontSize: 11.5, margin: '6px 0 0' }}>{imgError}</p>}
+            {imgError && <p style={{ color: 'var(--danger, #9C3B2E)', fontSize: 11.5, margin: '6px 0 0' }}>{imgError}</p>}
           </div>
         </div>
       </Field>
@@ -3159,9 +3391,9 @@ function ProfileForm({ initial, existingIds, onSave, onCancel, isNew, disabled }
         </p>
       </Field>
 
-      {error && <p style={{ color: '#9C3B2E', fontSize: 12.5, margin: '0 0 12px' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger, #9C3B2E)', fontSize: 12.5, margin: '0 0 12px' }}>{error}</p>}
       {disabled && (
-        <p style={{ color: '#9C3B2E', fontSize: 12, margin: '0 0 12px' }}>
+        <p style={{ color: 'var(--danger, #9C3B2E)', fontSize: 12, margin: '0 0 12px' }}>
           利用規約とプライバシーポリシーへの同意が必要です。
         </p>
       )}
@@ -3213,8 +3445,8 @@ function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
   const titleSuggestions = useMemo(() => uniq(allSongs.map((s) => s.title)), [allSongs]);
   const suiteGenreSuggestions = useMemo(() => uniq(allSongs.map((s) => s.suiteGenre)), [allSongs]);
   const suiteTitleSuggestions = useMemo(() => uniq(allSongs.map((s) => s.suiteTitle)), [allSongs]);
-  const lyricistSuggestions = useMemo(() => uniq([...allSongs.map((s) => s.lyricist), ...SEED_LYRICISTS]), [allSongs]);
-  const composerSuggestions = useMemo(() => uniq([...allSongs.map((s) => s.composer), ...SEED_COMPOSERS]), [allSongs]);
+  const lyricistSuggestions = useMemo(() => buildNameSuggestions(allSongs, 'lyricist', SEED_LYRICISTS), [allSongs]);
+  const composerSuggestions = useMemo(() => buildNameSuggestions(allSongs, 'composer', SEED_COMPOSERS), [allSongs]);
   const arrangerSuggestions = useMemo(() => uniq([...allSongs.map((s) => s.arranger), ...SEED_ARRANGERS]), [allSongs]);
 
   const getTagState = (name) => {
@@ -3307,6 +3539,16 @@ function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
             />
           </div>
         </div>
+        {d.suiteTitle && (
+          <div style={{ marginTop: 8 }}>
+            <label style={{ fontSize: 12, color: 'var(--ink-soft)' }}>組曲タイトルのよみがな(任意・組曲名順での並び替え精度が上がります)</label>
+            <TextInput
+              value={d.suiteTitleKana}
+              onChange={(e) => set('suiteTitleKana')(e.target.value)}
+              placeholder="例: つちのうた"
+            />
+          </div>
+        )}
         {d.suiteTitle && (
           <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
             <label style={{ fontSize: 12, color: 'var(--ink-soft)' }}>組曲内での順番</label>
@@ -3446,9 +3688,6 @@ function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
               onChange={(e) => setSungRecord('memo')(e.target.value)}
               placeholder="メモ"
             />
-            <p style={{ fontSize: 10.5, color: 'var(--ink-soft)', margin: '4px 2px 0' }}>
-              本名・住所・電話番号などの詳細な個人情報は入力しないでください。
-            </p>
           </div>
         </Field>
       )}
@@ -3477,7 +3716,7 @@ function SongForm({ initial, onSave, onCancel, onDuplicate, allSongs = [] }) {
         </Field>
       )}
 
-      {error && <p style={{ color: '#9C3B2E', fontSize: 12.5, margin: '0 0 12px' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--danger, #9C3B2E)', fontSize: 12.5, margin: '0 0 12px' }}>{error}</p>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4, flexWrap: 'wrap' }}>
         <Button variant="quiet" onClick={onCancel}>キャンセル</Button>
         <Button variant="primary" onClick={submit}><Check size={14} /> 保存する</Button>
@@ -3517,8 +3756,13 @@ export default function App() {
   const [skipGoogleChoice, setSkipGoogleChoice] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [googleSignedIn, setGoogleSignedIn] = useState(false);
+  const googleSignedInRef = useRef(false); // イベントリスナー内から常に最新値を参照するため
+  googleSignedInRef.current = googleSignedIn;
   const [googleAccount, setGoogleAccount] = useState(null); // {name, email, picture}
   const [driveSyncStatus, setDriveSyncStatus] = useState('idle'); // idle | syncing | error
+  // Googleログイン直後、Drive上に既にプロフィールが見つかった場合、自動でどちらか決めず
+  // ユーザーに選んでもらうための候補一覧。null = 選択待ちなし。
+  const [driveAccountCandidates, setDriveAccountCandidates] = useState(null);
   const [driveError, setDriveError] = useState('');
   const driveTokenRef = useRef(null);
   const driveFileIdRef = useRef(null);
@@ -3535,7 +3779,9 @@ export default function App() {
   const [songFormKey, setSongFormKey] = useState(0);
   const songWindowRef = useRef(null);
   const openSongForm = (draft) => {
-    if (!isStandaloneApp()) {
+    // スマホ・タブレットでは、ホーム画面への追加状況に関わらず常に画面内モーダルで開く
+    // (別ウィンドウのポップアップだと、毎回ブラウザに許可を聞かれてしまうため)。
+    if (!isStandaloneApp() && !isMobileDevice()) {
       if (songWindowRef.current && !songWindowRef.current.closed) {
         songWindowRef.current.focus();
         return;
@@ -3613,6 +3859,7 @@ export default function App() {
   };
   const [visibleCount, setVisibleCount] = useState(10);
   const loadMoreRef = useRef(null);
+  const hasMoreMySongsRef = useRef(false); // IntersectionObserverのコールバックから常に最新値を参照するため
   const [viewFilters, setViewFilters] = useState(emptySongFilters());
   const [viewSort, setViewSort] = useState('random');
   const [randomSeed, setRandomSeed] = useState(() => Math.random().toString(36).slice(2));
@@ -3649,10 +3896,12 @@ export default function App() {
   };
 
   /* ---- スマホを振ってシャッフル(対応端末のみ。非対応でも問題なく無視される) ----
-     マイページの設定(shakePref)がオン、かつ端末の許可(motionEnabled)が下りている場合のみ動作する。 */
+     マイページの設定(shakePref)がオン、かつ端末の許可(motionEnabled)が下りている場合のみ動作する。
+     動画のプレイリスト再生中(showPlaylist)は、シェイク操作が再生の妨げになるため一時的に無効化する。
+     showPlaylistがfalseに戻ればこの条件を再び満たすので、閉じると自動的に元の設定へ戻る。 */
   useEffect(() => {
     if (typeof window === 'undefined' || !window.DeviceMotionEvent) return;
-    if (view !== 'mydb' || dbSort !== 'random' || !motionEnabled || !shakePref) return;
+    if (view !== 'mydb' || dbSort !== 'random' || !motionEnabled || !shakePref || showPlaylist) return;
     let lastShake = 0;
     let lastAccel = null;
     const SHAKE_THRESHOLD = 18; // m/s^2 の変化量(体感で調整済み)
@@ -3672,7 +3921,7 @@ export default function App() {
     };
     window.addEventListener('devicemotion', onMotion);
     return () => window.removeEventListener('devicemotion', onMotion);
-  }, [view, dbSort, motionEnabled, shakePref]);
+  }, [view, dbSort, motionEnabled, shakePref, showPlaylist]);
   useEffect(() => {
     setVisibleCount(10);
   }, [dbFilters, dbSort, groupBySuite, randomSeed]);
@@ -3680,14 +3929,18 @@ export default function App() {
     if (view !== 'mydb') return;
     const el = loadMoreRef.current;
     if (!el) return;
+    // 依存配列にvisibleCountを含めない: 曲を読み込むたびに監視をいったん切って作り直すと、
+    // タイミングによっては次の検知が働かなくなることがあった(下までスクロールしても
+    // 読み込みが進まなくなる不具合の原因)。監視自体はこの画面にいる間ずっと同じものを使い続け、
+    // hasMoreMySongsRefで「まだ続きがあるか」を常に最新の状態で判定するようにする。
     const obs = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
+      if (entries[0].isIntersecting && hasMoreMySongsRef.current) {
         setVisibleCount((v) => v + 10);
       }
     }, { rootMargin: '300px' });
     obs.observe(el);
     return () => obs.disconnect();
-  }, [view, visibleCount]);
+  }, [view, groupBySuite]);
   const [songDetail, setSongDetail] = useState(null);
   const [followListMode, setFollowListMode] = useState(null);
   const [unfollowConfirm, setUnfollowConfirm] = useState(null);
@@ -3698,6 +3951,8 @@ export default function App() {
   const [toast, setToast] = useState('');
   const toastTimer = useRef(null);
   const currentTheme = getTheme(themeId);
+  const [showWhatsNew, setShowWhatsNew] = useState(false); // 起動時の「アップデートのお知らせ」自動表示用
+  const [showWhatsNewHistory, setShowWhatsNewHistory] = useState(false); // マイページの「お知らせ」から開く全履歴用
 
   const showToast = (msg) => {
     setToast(msg);
@@ -3716,6 +3971,17 @@ export default function App() {
       } else {
         setShowProfileForm(true);
         setProfileFormMode('new');
+      }
+      // 「前回見た時より新しいお知らせ」があれば自動表示する。
+      // ただし、この端末で一度もアプリを開いたことが無い(=最後に見たバージョンの記録が無い)場合は、
+      // 初回起動時に大量のお知らせをいきなり見せても意味が無いので、黙って「今の最新版」を
+      // 見た事にしておくだけにする(次にアップデートがあった時から通知が始まる)。
+      const lastSeen = loadLastSeenChangelogVersion();
+      const latest = getLatestChangelogVersion();
+      if (!lastSeen) {
+        saveLastSeenChangelogVersion(latest);
+      } else if (latest > lastSeen) {
+        setShowWhatsNew(true);
       }
       setLoading(false);
     })();
@@ -3839,19 +4105,24 @@ export default function App() {
   const applyDriveDataAfterSignIn = useCallback(async (token) => {
     driveReconcilingRef.current = true;
     setDriveSyncStatus('syncing');
+    let awaitingChoice = false;
     try {
       let fileId = await driveFindFileId(token);
       if (fileId) {
         driveFileIdRef.current = fileId;
         const remote = await driveDownload(token, fileId);
         if (remote && remote.users && remote.songs && Object.keys(remote.users).length > 0) {
+          // Drive上に既存のプロフィールが見つかった。ここで自動的にどちらかへ決め打ちせず、
+          // 「このアカウントでログインする」か「別のプロフィールとして新規作成する」かを
+          // ユーザーに選んでもらう(下のdriveAccountCandidatesの分岐UIを参照)。
+          // データ自体はこの時点で読み込んでおく(新規作成を選んだ場合も、既存プロフィールを
+          // 消さずに追加する形にするため)。
           setData(remote);
           await saveData(remote);
-          const firstUserId = Object.keys(remote.users)[0];
-          if (firstUserId) {
-            setMeId(firstUserId);
-            await saveSession({ currentUserId: firstUserId });
-          }
+          // Object.values(remote.users)だと、古い形式のデータでプロフィール側にuserIdが
+          // 正しく入っていない場合に選択できなくなるため、users(マップ)のキーを確実にuserIdとして使う。
+          setDriveAccountCandidates(Object.entries(remote.users).map(([uid, u]) => ({ ...u, userId: uid })));
+          awaitingChoice = true;
         }
       } else {
         // Drive側にまだファイルが無い場合、現在ローカルにあるデータを初期データとしてアップロード
@@ -3866,10 +4137,33 @@ export default function App() {
       setDriveSyncStatus('error');
       setDriveError(e.message || 'Driveからの読み込みに失敗しました');
     } finally {
-      // 成功・失敗どちらでも、これ以降は通常通りsyncToDriveでのアップロードを許可する。
-      driveReconcilingRef.current = false;
+      // ユーザーの選択待ちの場合は、選択されるまでsyncToDriveでのアップロードを止めておく
+      // (下のchooseExistingDriveAccount/chooseNewProfileOnThisDriveで解除する)。
+      if (!awaitingChoice) driveReconcilingRef.current = false;
     }
   }, []);
+
+  // Drive上の既存プロフィールをそのまま使う場合
+  const chooseExistingDriveAccount = (userId) => {
+    setMeId(userId);
+    saveSession({ currentUserId: userId });
+    setDriveAccountCandidates(null);
+    driveReconcilingRef.current = false;
+    setView('mydb');
+    // アプリ起動直後(まだGoogleログイン前)、ローカルにプロフィールが無い端末では
+    // 「新規プロフィール作成」の別モーダル(showProfileForm)を開く予約が入ってしまっている。
+    // Driveから既存プロフィールを読み込めた今、その予約は不要になったので必ず閉じておく。
+    // これを消さないと、正しいアカウントが読み込まれた裏で、この編集モーダルが
+    // 覆いかぶさって表示されてしまう(キャンセルすると正しい画面が見える、という症状の原因)。
+    setShowProfileForm(false);
+  };
+  // Drive上に既存プロフィールがあっても、この端末では別の新しいプロフィールを作る場合
+  // (例: 同じGoogleアカウントを家族で共有しているなど)。既存のプロフィールは消さず、
+  // 新しいプロフィールを追加する形になる(createProfileがusersをマージするため)。
+  const chooseNewProfileOnThisDrive = () => {
+    setDriveAccountCandidates(null);
+    driveReconcilingRef.current = false;
+  };
 
   const handleGoogleToken = useCallback((tokenResponse) => {
     if (tokenResponse?.error) {
@@ -3888,21 +4182,49 @@ export default function App() {
   }, [applyDriveDataAfterSignIn]);
 
   useEffect(() => {
-    if (!googleConfigured) return;
+    if (!googleConfigured) return undefined;
+    let cancelled = false;
+
+    let wasSignedIn = false;
+    try { wasSignedIn = localStorage.getItem(GOOGLE_SIGNED_IN_FLAG) === '1'; } catch (e) { /* noop */ }
+
+    // 「以前ログインしたことがある場合、裏で自動的に再ログインを試みる」処理は、ユーザー操作
+    // (タップ・クリック)を伴わずにブラウザのAPI(ポップアップの仕組み)を呼び出すことになるため、
+    // スマホのブラウザでは毎回「ポップアップウィンドウが開きます」という警告が表示されてしまう。
+    // これを避けるため、アプリを開いた直後には自動実行せず、ユーザーが画面に最初に触れた
+    // (タップ・クリックした)その瞬間に1度だけ試みるようにする。
+    // トークンクライアントの準備ができる前にタップされても取りこぼさないよう、フラグで管理する。
+    let tapped = false;
+    const tryAutoReconnect = () => {
+      document.removeEventListener('pointerdown', onFirstTap);
+      if (cancelled || googleSignedInRef.current || !googleTokenClientRef.current) return;
+      googleTokenClientRef.current.requestAccessToken({ prompt: '' });
+    };
+    const onFirstTap = () => {
+      tapped = true;
+      tryAutoReconnect();
+    };
+    if (wasSignedIn) {
+      document.addEventListener('pointerdown', onFirstTap, { once: true });
+    }
+
     const trySetup = () => {
+      if (cancelled) return;
       if (!window.google?.accounts?.oauth2) { setTimeout(trySetup, 300); return; }
       googleTokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
         scope: DRIVE_SCOPE,
         callback: handleGoogleToken,
       });
-      let wasSignedIn = false;
-      try { wasSignedIn = localStorage.getItem(GOOGLE_SIGNED_IN_FLAG) === '1'; } catch (e) { /* noop */ }
-      if (wasSignedIn) {
-        googleTokenClientRef.current.requestAccessToken({ prompt: '' });
-      }
+      // 準備ができるより前にすでにタップされていた場合は、ここで取りこぼさず実行する
+      if (wasSignedIn && tapped) tryAutoReconnect();
     };
     trySetup();
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('pointerdown', onFirstTap);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [googleConfigured, handleGoogleToken]);
 
@@ -4010,10 +4332,17 @@ export default function App() {
 
   const me = meId ? data.users[meId] : null;
   const allUserIds = Object.keys(data.users);
-  const mySongsRaw = Object.values(data.songs).filter((s) => s.ownerId === meId);
-  const mySongsAll = sortSongs(filterSongs(mySongsRaw, dbFilters), dbSort, randomSeed);
+  const mySongsRaw = useMemo(
+    () => Object.values(data.songs).filter((s) => s.ownerId === meId),
+    [data.songs, meId]
+  );
+  const mySongsAll = useMemo(
+    () => sortSongs(filterSongs(mySongsRaw, dbFilters), dbSort, randomSeed),
+    [mySongsRaw, dbFilters, dbSort, randomSeed]
+  );
   const mySongs = mySongsAll.slice(0, visibleCount);
   const hasMoreMySongs = mySongsAll.length > visibleCount;
+  hasMoreMySongsRef.current = hasMoreMySongs;
   const suiteGroups = useMemo(() => {
     if (!groupBySuite) return null;
     const groups = [];
@@ -4447,9 +4776,53 @@ export default function App() {
 
   if (!me) {
     const showGoogleChoice = googleConfigured && !googleSignedIn && !skipGoogleChoice;
+
+    if (driveAccountCandidates) {
+      return (
+        <Wrap theme={currentTheme}>
+          <div style={{ maxWidth: 440, margin: '40px auto', background: 'var(--surface, #fff)', borderRadius: 12, padding: 26, border: '1px solid var(--line)' }}>
+            <img src={bannerUrl} alt="うたコレ" style={{ width: '100%', maxWidth: 280, display: 'block', margin: '0 auto 18px' }} />
+            <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 6px', fontSize: 19 }}>Googleドライブに既存のデータがあります</h2>
+            <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', lineHeight: 1.7, margin: '0 0 18px' }}>
+              このGoogleアカウントのドライブには、以前に作成したプロフィールが見つかりました。
+              続けるか、この端末用に新しいプロフィールを作るか選んでください。
+            </p>
+            {driveAccountCandidates.map((u) => (
+              <button key={u.userId} onClick={() => chooseExistingDriveAccount(u.userId)} style={{
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '12px 14px',
+                background: 'var(--wine)', color: '#fff', border: 'none', borderRadius: 10,
+                cursor: 'pointer', fontSize: 14, fontWeight: 700, marginBottom: 10, textAlign: 'left',
+              }}>
+                <Avatar name={u.displayName} src={u.avatarDataUrl} size={30} />
+                <span>
+                  「{u.displayName}」として続ける
+                  <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.9, marginTop: 2 }}>
+                    このプロフィールの曲データを、この端末に読み込みます
+                  </div>
+                </span>
+              </button>
+            ))}
+            <button onClick={chooseNewProfileOnThisDrive} style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '12px 14px',
+              background: 'var(--surface, #fff)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 10,
+              cursor: 'pointer', fontSize: 14, fontWeight: 600,
+            }}>
+              <UserPlus size={18} />
+              <span style={{ textAlign: 'left' }}>
+                この端末用に新しいプロフィールを作る
+                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--ink-soft)', marginTop: 2 }}>
+                  同じGoogleドライブの中に、別のプロフィールとして追加されます(既存のプロフィールは消えません)
+                </div>
+              </span>
+            </button>
+          </div>
+        </Wrap>
+      );
+    }
+
     return (
       <Wrap theme={currentTheme}>
-        <div style={{ maxWidth: 440, margin: '40px auto', background: '#fff', borderRadius: 12, padding: 26, border: '1px solid var(--line)' }}>
+        <div style={{ maxWidth: 440, margin: '40px auto', background: 'var(--surface, #fff)', borderRadius: 12, padding: 26, border: '1px solid var(--line)' }}>
           <img src={bannerUrl} alt="うたコレ" style={{ width: '100%', maxWidth: 280, display: 'block', margin: '0 auto 18px' }} />
 
           <label style={{
@@ -4491,7 +4864,7 @@ export default function App() {
               </button>
               <button onClick={() => setSkipGoogleChoice(true)} disabled={!agreedToTerms} style={{
                 display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '14px 16px',
-                background: '#fff', color: agreedToTerms ? 'var(--ink)' : '#b8b0a8', border: '1px solid var(--line)', borderRadius: 10,
+                background: 'var(--surface, #fff)', color: agreedToTerms ? 'var(--ink)' : '#b8b0a8', border: '1px solid var(--line)', borderRadius: 10,
                 cursor: agreedToTerms ? 'pointer' : 'not-allowed', fontSize: 14, fontWeight: 600,
               }}>
                 <Music2 size={18} />
@@ -4528,7 +4901,7 @@ export default function App() {
   if (me.frozen) {
     return (
       <Wrap theme={currentTheme}>
-        <div style={{ maxWidth: 460, margin: '30px auto', background: '#fff', borderRadius: 12, padding: 26, border: '1px solid var(--line)', textAlign: 'center' }}>
+        <div style={{ maxWidth: 460, margin: '30px auto', background: 'var(--surface, #fff)', borderRadius: 12, padding: 26, border: '1px solid var(--line)', textAlign: 'center' }}>
           <div style={{
             width: 52, height: 52, borderRadius: '50%', background: 'var(--wine-soft)', color: 'var(--wine)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px',
@@ -4580,13 +4953,16 @@ export default function App() {
     <Wrap theme={currentTheme}>
       {/* ヘッダー */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px 6px 6px',
+          background: '#E5E5E5', borderRadius: 'var(--radius-pill, 999px)',
+        }}>
           <img src={appIconUrl} alt="うたコレ" style={{ width: 38, height: 38, borderRadius: 9, objectFit: 'cover' }} />
           <img src={wordmarkUrl} alt="うたコレ UTA-COLLE" style={{ height: 32, width: 'auto', display: 'block' }} />
         </div>
         <div style={{ position: 'relative' }} ref={switcherRef}>
           <button onClick={() => setShowSwitcher((v) => !v)} style={{
-            display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--line)',
+            display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface, #fff)', border: '1px solid var(--line)',
             borderRadius: 'var(--radius-pill, 20px)', padding: '4px 10px 4px 4px', cursor: 'pointer',
           }}>
             <Avatar name={me.displayName} size={26} src={me.avatarDataUrl} />
@@ -4595,7 +4971,7 @@ export default function App() {
           </button>
           {showSwitcher && (
             <div style={{
-              position: 'absolute', right: 0, top: 42, background: '#fff', border: '1px solid var(--line)',
+              position: 'absolute', right: 0, top: 42, background: 'var(--surface, #fff)', border: '1px solid var(--line)',
               borderRadius: 10, width: 250, boxShadow: '0 10px 30px rgba(0,0,0,.12)', zIndex: 50, overflow: 'hidden',
             }}>
               <button onClick={() => { setShowSwitcher(false); setView('mypage'); }} style={{
@@ -4682,7 +5058,7 @@ export default function App() {
 
       {/* ---- マイページ ---- */}
       {view === 'mypage' && (
-        <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: 22 }}>
+        <div style={{ background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: 22 }}>
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <Avatar name={me.displayName} size={58} src={me.avatarDataUrl} />
             <div style={{ flex: 1 }}>
@@ -4727,7 +5103,7 @@ export default function App() {
 
       {view === 'mypage' && (
         <div style={{
-          background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: '16px 22px',
+          background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: '16px 22px',
           marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         }}>
           <Share2 size={18} color="var(--wine)" style={{ flexShrink: 0 }} />
@@ -4743,7 +5119,7 @@ export default function App() {
 
       {view === 'mypage' && !isStandaloneApp() && (
         <div style={{
-          background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: '16px 22px',
+          background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: '16px 22px',
           marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         }}>
           <Ticket size={18} color="var(--wine)" style={{ flexShrink: 0 }} />
@@ -4764,7 +5140,7 @@ export default function App() {
       )}
 
       {SOCIAL_FEATURES_ENABLED && view === 'mypage' && (
-        <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
+        <div style={{ background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Ticket size={16} color="var(--wine)" />
@@ -4799,7 +5175,7 @@ export default function App() {
       )}
 
       {SOCIAL_FEATURES_ENABLED && view === 'mypage' && (
-        <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
+        <div style={{ background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <Radar size={16} color="var(--wine)" />
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>すれ違い機能(デモ)</div>
@@ -4836,7 +5212,7 @@ export default function App() {
       )}
 
       {view === 'mypage' && (
-        <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
+        <div style={{ background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
           <button
             onClick={() => setThemePanelOpen((v) => !v)}
             style={{
@@ -4884,7 +5260,7 @@ export default function App() {
       )}
 
       {view === 'mypage' && (
-        <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
+        <div style={{ background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <Shuffle size={16} color="var(--wine)" />
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>スマホを振ってシャッフル</div>
@@ -4908,7 +5284,22 @@ export default function App() {
       )}
 
       {view === 'mypage' && (
-        <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
+        <div style={{ background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Bell size={16} color="var(--wine)" />
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>お知らせ</div>
+          </div>
+          <p style={{ fontSize: 11.5, color: 'var(--ink-soft)', margin: '0 0 14px', lineHeight: 1.7 }}>
+            うたコレの更新履歴を確認できます。
+          </p>
+          <Button variant="quiet" onClick={() => setShowWhatsNewHistory(true)}>
+            <Bell size={13} /> 更新履歴を見る
+          </Button>
+        </div>
+      )}
+
+      {view === 'mypage' && (
+        <div style={{ background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: 22, marginTop: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <FileText size={16} color="var(--wine)" />
             <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>バックアップ</div>
@@ -4924,7 +5315,7 @@ export default function App() {
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                 fontSize: 13.5, fontFamily: 'var(--font-body)', fontWeight: 600, padding: '8px 14px',
-                borderRadius: 6, background: '#fff', color: 'var(--ink)', border: '1px solid var(--line)',
+                borderRadius: 6, background: 'var(--surface, #fff)', color: 'var(--ink)', border: '1px solid var(--line)',
                 textDecoration: 'none',
               }}
             >
@@ -4949,7 +5340,7 @@ export default function App() {
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                 fontSize: 13.5, fontFamily: 'var(--font-body)', fontWeight: 600, padding: '8px 14px',
-                borderRadius: 6, background: '#fff', color: 'var(--ink)', border: '1px solid var(--line)',
+                borderRadius: 6, background: 'var(--surface, #fff)', color: 'var(--ink)', border: '1px solid var(--line)',
                 textDecoration: 'none',
               }}
             >
@@ -4963,7 +5354,7 @@ export default function App() {
                 variant="quiet"
                 onClick={() => setShowDriveDeleteConfirm(true)}
                 disabled={deletingDriveData}
-                style={{ color: '#9C3B2E' }}
+                style={{ color: 'var(--danger, #9C3B2E)' }}
               >
                 {deletingDriveData ? <Loader2 size={13} className="spin" /> : <Trash2 size={13} />}
                 Googleドライブ上のバックアップデータを削除
@@ -4978,8 +5369,8 @@ export default function App() {
       )}
 
       {view === 'mypage' && (
-        <div style={{ background: '#fff', border: '1px solid #E8B4AC', borderRadius: 12, padding: 22, marginTop: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: '#9C3B2E', marginBottom: 6 }}>アカウントを削除</div>
+        <div style={{ background: 'var(--surface, #fff)', border: '1px solid #E8B4AC', borderRadius: 12, padding: 22, marginTop: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--danger, #9C3B2E)', marginBottom: 6 }}>アカウントを削除</div>
           <p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '0 0 12px', lineHeight: 1.7 }}>
             プロフィールと登録した曲データを、この端末およびGoogleドライブ(ログイン中の場合)から
             すべて削除します。この操作は取り消せません。
@@ -4987,7 +5378,7 @@ export default function App() {
           <Button
             onClick={() => setShowDeleteAccountConfirm(true)}
             disabled={deletingAccount}
-            style={{ background: '#9C3B2E', color: '#fff', border: '1px solid #9C3B2E' }}
+            style={{ background: 'var(--danger, #9C3B2E)', color: '#fff', border: '1px solid var(--danger, #9C3B2E)' }}
           >
             {deletingAccount ? <Loader2 size={13} className="spin" /> : <Trash2 size={13} />}
             アカウントを削除する
@@ -5084,7 +5475,7 @@ export default function App() {
                   <Button
                     onClick={() => setDeleteConfirm({ bulk: true, ids: Array.from(selectedIds) })}
                     disabled={selectedIds.size === 0}
-                    style={{ color: '#9C3B2E' }}
+                    style={{ color: 'var(--danger, #9C3B2E)' }}
                   >
                     <Trash2 size={13} /> 選択した曲を削除
                   </Button>
@@ -5153,7 +5544,7 @@ export default function App() {
             ))
           )}
 
-          {mySongs.length > 0 && (
+          {mySongs.length > 0 && !(groupBySuite && suiteGroups) && (
             <div ref={loadMoreRef} style={{ display: 'flex', justifyContent: 'center', padding: '14px 0' }}>
               {hasMoreMySongs && <Loader2 size={16} className="spin" color="var(--ink-soft)" />}
             </div>
@@ -5223,7 +5614,7 @@ export default function App() {
           <Button variant="quiet" onClick={() => setViewedUserId(null)} style={{ marginBottom: 14 }}>
             <ChevronLeft size={15} /> 一覧に戻る
           </Button>
-          <div style={{ background: '#fff', border: '1px solid var(--line)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+          <div style={{ background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
             <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
               <Avatar name={viewedUser.displayName} size={50} src={viewedUser.avatarDataUrl} />
               <div style={{ flex: 1 }}>
@@ -5349,6 +5740,20 @@ export default function App() {
 
       {showCsvImport && (
         <CSVImportModal onClose={() => setShowCsvImport(false)} onImport={bulkImportSongs} mySongs={mySongsRaw} />
+      )}
+
+      {showWhatsNew && (
+        <WhatsNewModal
+          sinceVersion={loadLastSeenChangelogVersion()}
+          onClose={() => {
+            saveLastSeenChangelogVersion(getLatestChangelogVersion());
+            setShowWhatsNew(false);
+          }}
+        />
+      )}
+
+      {showWhatsNewHistory && (
+        <WhatsNewModal onClose={() => setShowWhatsNewHistory(false)} />
       )}
 
       {showShareList && (
@@ -5561,7 +5966,7 @@ export default function App() {
       {encounterUser && data.users[encounterUser] && (
         <div style={{
           position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 180,
-          background: '#fff', border: '1px solid var(--line)', borderRadius: 12,
+          background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12,
           boxShadow: '0 10px 30px rgba(0,0,0,.18)', padding: '12px 14px', display: 'flex',
           alignItems: 'center', gap: 10, maxWidth: 360, width: 'calc(100% - 32px)',
         }}>
@@ -5699,6 +6104,9 @@ function Wrap({ children, theme }) {
     ...(theme.radiusPill != null ? { '--radius-pill': `${theme.radiusPill}px` } : {}),
     ...(theme.shadowCard ? { '--shadow-card': theme.shadowCard } : {}),
     ...(theme.shadowModal ? { '--shadow-modal': theme.shadowModal } : {}),
+    ...(theme.surface ? { '--surface': theme.surface } : {}),
+    ...(theme.danger ? { '--danger': theme.danger } : {}),
+    ...(theme.goldText ? { '--gold-text': theme.goldText } : {}),
   } : {};
   return (
     <div className="app-wrap" style={{
@@ -5727,7 +6135,11 @@ function Wrap({ children, theme }) {
           --font-body: 'Zen Kaku Gothic New', sans-serif;
           --font-mono: 'JetBrains Mono', monospace;
         }
-        select { cursor: pointer; }
+        select { cursor: pointer; color: inherit; }
+        /* buttonはブラウザ既定で文字色が黒固定になりがちなので、テーマの文字色を継承させる。
+           色を個別指定しているボタン(Buttonコンポーネント等)はそちらが優先されるので影響ない。 */
+        .app-wrap button { color: inherit; font-family: inherit; }
+        .app-wrap input::placeholder, .app-wrap textarea::placeholder { color: var(--ink-soft); opacity: 0.8; }
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -5788,7 +6200,7 @@ function SectionLabel({ children }) {
 function EmptyState({ title, body, actionLabel, onAction }) {
   return (
     <div style={{
-      textAlign: 'center', padding: '48px 20px', background: '#fff', border: '1px dashed var(--line)',
+      textAlign: 'center', padding: '48px 20px', background: 'var(--surface, #fff)', border: '1px dashed var(--line)',
       borderRadius: 12,
     }}>
       <Music2 size={26} color="var(--ink-soft)" style={{ marginBottom: 10 }} />
@@ -5802,7 +6214,7 @@ function EmptyState({ title, body, actionLabel, onAction }) {
 function UserRow({ user, following, onFollow, onOpen }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid var(--line)',
+      display: 'flex', alignItems: 'center', gap: 12, background: 'var(--surface, #fff)', border: '1px solid var(--line)',
       borderRadius: 10, padding: '10px 14px', marginBottom: 10,
     }}>
       <Avatar name={user.displayName} size={38} src={user.avatarDataUrl} />
@@ -5863,7 +6275,7 @@ function QrCanvas({ data, size = 240 }) {
       ref={canvasRef}
       style={{
         width: size, height: size, maxWidth: 'none', maxHeight: 'none',
-        border: '1px solid var(--line)', borderRadius: 8, background: '#fff',
+        border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface, #fff)',
       }}
     />
   );
@@ -5893,9 +6305,16 @@ function EventShareModal({ onClose, hostName, onToast }) {
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
   const [copied, setCopied] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
 
-  const encoded = name.trim() ? encodeEventPayload(name.trim(), date, hostName) : '';
-  const shareUrl = encoded ? buildShareUrl(encoded) : '';
+  useEffect(() => {
+    let cancelled = false;
+    if (!name.trim()) { setShareUrl(''); return undefined; }
+    encodeEventPayload(name.trim(), date, hostName).then((encoded) => {
+      if (!cancelled) setShareUrl(buildShareUrl(encoded));
+    });
+    return () => { cancelled = true; };
+  }, [name, date, hostName]);
 
   const copyLink = async () => {
     const ok = await copyToClipboard(shareUrl);
@@ -5920,7 +6339,7 @@ function EventShareModal({ onClose, hostName, onToast }) {
       {name.trim() && (
         <>
           <QrBlock shareUrl={shareUrl} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 14 }}>
             <input readOnly value={shareUrl} onFocus={(e) => e.target.select()} style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--ink)', minWidth: 0 }} />
             <Button onClick={copyLink}>{copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'コピー済み' : 'コピー'}</Button>
           </div>
@@ -5936,8 +6355,15 @@ function EventShareModal({ onClose, hostName, onToast }) {
 
 function ProfileShareModal({ me, onClose, onToast }) {
   const [copied, setCopied] = useState(false);
-  const encoded = useMemo(() => encodeProfilePayload(me), [me]);
-  const shareUrl = buildShareUrl(encoded);
+  const [shareUrl, setShareUrl] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    encodeProfilePayload(me).then((encoded) => {
+      if (!cancelled) setShareUrl(buildShareUrl(encoded));
+    });
+    return () => { cancelled = true; };
+  }, [me]);
 
   const copyLink = async () => {
     const ok = await copyToClipboard(shareUrl);
@@ -5953,7 +6379,7 @@ function ProfileShareModal({ me, onClose, onToast }) {
         会場などでその場にいる人に見せて、読み取ってもらってください。
       </p>
       <QrBlock shareUrl={shareUrl} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', marginBottom: 16 }}>
         <input readOnly value={shareUrl} onFocus={(e) => e.target.select()} style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, flex: 1, border: 'none', outline: 'none', background: 'transparent', color: 'var(--ink)', minWidth: 0 }} />
         <Button onClick={copyLink}>{copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'コピー済み' : 'コピー'}</Button>
       </div>
@@ -6017,7 +6443,7 @@ function SharedLinkImportModal({ url, initialField, mySongs, onClose, onOverwrit
         {mySongs.length === 0 ? (
           <p style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>登録済みの曲がありません。</p>
         ) : (
-          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8, background: '#fff' }}>
+          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8, background: 'var(--surface, #fff)' }}>
             {results.length === 0 ? (
               <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', padding: '10px 12px' }}>一致する曲が見つかりません。</p>
             ) : results.map((s) => (
@@ -6053,6 +6479,7 @@ function ShareListModal({ mySongs, myName, onClose, onToast, googleSignedIn, dri
   const [driveEncoded, setDriveEncoded] = useState('');
   const [driveLoading, setDriveLoading] = useState(false);
   const [driveError, setDriveError] = useState('');
+  const [encoded, setEncoded] = useState('');
 
   const toggle = (id) => {
     setSelected((prev) => {
@@ -6064,8 +6491,17 @@ function ShareListModal({ mySongs, myName, onClose, onToast, googleSignedIn, dri
   };
 
   const selectedSongs = mySongs.filter((s) => selected.has(s.id));
-  const encoded = useMemo(() => encodeSharePayload(myName, selectedSongs), [myName, selectedSongs]);
-  const embedShareUrl = buildShareUrl(encoded);
+
+  useEffect(() => {
+    let cancelled = false;
+    encodeSharePayload(myName, selectedSongs).then((enc) => {
+      if (!cancelled) setEncoded(enc);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myName, selectedSongs.map((s) => s.id).join(',')]);
+
+  const embedShareUrl = encoded ? buildShareUrl(encoded) : '';
   const oversized = encoded.length > SHARE_QR_SAFE_LIMIT;
   const canUseDrive = googleSignedIn && driveShareConfigured;
   const driveShareUrl = driveEncoded ? buildShareUrl(driveEncoded) : '';
@@ -6136,7 +6572,7 @@ function ShareListModal({ mySongs, myName, onClose, onToast, googleSignedIn, dri
       ) : (
         <div style={{
           maxHeight: 200, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8,
-          marginBottom: 16, background: '#fff',
+          marginBottom: 16, background: 'var(--surface, #fff)',
         }}>
           {mySongs.map((s) => (
             <label key={s.id} style={{
@@ -6152,7 +6588,7 @@ function ShareListModal({ mySongs, myName, onClose, onToast, googleSignedIn, dri
       )}
 
       {mode === 'embed' && oversized && (
-        <p style={{ fontSize: 12, color: '#9C3B2E', margin: '0 0 12px' }}>
+        <p style={{ fontSize: 12, color: 'var(--danger, #9C3B2E)', margin: '0 0 12px' }}>
           曲数が多いため、QRコードが読み取れない可能性があります。
           {canUseDrive ? '「Googleドライブ経由」への切り替えをおすすめします。' : '曲を減らすか、リンクを直接送ってください。'}
         </p>
@@ -6160,7 +6596,7 @@ function ShareListModal({ mySongs, myName, onClose, onToast, googleSignedIn, dri
 
       {mode === 'drive' && (
         <>
-          {driveError && <p style={{ fontSize: 12, color: '#9C3B2E', margin: '0 0 12px' }}>{driveError}</p>}
+          {driveError && <p style={{ fontSize: 12, color: 'var(--danger, #9C3B2E)', margin: '0 0 12px' }}>{driveError}</p>}
           {!driveEncoded && (
             <div style={{ marginBottom: 14 }}>
               <Button variant="primary" onClick={createDriveShare} disabled={selected.size === 0 || driveLoading}>
@@ -6326,12 +6762,12 @@ function ImportListModal({ initialCode, onClose, onImportSongs, onJoinEvent, onS
     return preview.songs.map((s) => findDuplicateSong(s, mySongs));
   }, [preview, mySongs]);
 
-  const runParse = (raw) => {
+  const runParse = async (raw) => {
     setError('');
     try {
       const code = extractShareCodeFromInput(raw);
       if (!code) { setError('リンクまたはコードを入力してください。'); return; }
-      const result = decodeSharePayload(code);
+      const result = await decodeSharePayload(code);
       if (result.type === 'songs' && result.songs.length === 0) {
         setError('曲データが見つかりませんでした。');
         return;
@@ -6353,7 +6789,7 @@ function ImportListModal({ initialCode, onClose, onImportSongs, onJoinEvent, onS
       }
       setPreview(result);
     } catch (e) {
-      setError('読み込めませんでした。リンクまたはコードが正しいかご確認ください。');
+      setError(e.message && e.message.includes('対応していません') ? e.message : '読み込めませんでした。リンクまたはコードが正しいかご確認ください。');
     }
   };
 
@@ -6391,10 +6827,9 @@ function ImportListModal({ initialCode, onClose, onImportSongs, onJoinEvent, onS
 
   return (
     <ModalShell onClose={onClose} width={480}>
-      <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>QR/URLを読み込む</h2>
+      <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>QRコード/URLを読み込む</h2>
       <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 14px', lineHeight: 1.7 }}>
-        カメラでQRコードを直接読み取るか、受け取ったURL・コードを貼り付けてください。
-        曲リスト・イベント参加・プロフィールのどれでも読み込めます。
+        カメラでQRコードを直接読み取るか、受け取ったURLを貼り付けてください。
       </p>
 
       {!preview && (
@@ -6418,10 +6853,10 @@ function ImportListModal({ initialCode, onClose, onImportSongs, onJoinEvent, onS
           <TextArea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="https://chorusdb.app/import#... または コード部分のみ"
+            placeholder="https://utacolle.com/#..."
             style={{ minHeight: 80, marginBottom: 12 }}
           />
-          {error && <p style={{ color: '#9C3B2E', fontSize: 12.5, margin: '0 0 12px' }}>{error}</p>}
+          {error && <p style={{ color: 'var(--danger, #9C3B2E)', fontSize: 12.5, margin: '0 0 12px' }}>{error}</p>}
           {loadingDrive && (
             <p style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink-soft)', fontSize: 12.5, margin: '0 0 12px' }}>
               <Loader2 size={14} className="spin" /> ドライブから共有データを取得しています...
@@ -6462,7 +6897,7 @@ function ImportListModal({ initialCode, onClose, onImportSongs, onJoinEvent, onS
                     {s.title}
                     <span style={{ color: 'var(--ink-soft)' }}> ({s.lyricist} / {s.composer})</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#8a6a34', marginBottom: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gold-text, #8a6a34)', marginBottom: 2 }}>
                     <Flag size={11} /> 登録済みの曲と一致する可能性があります
                   </div>
                   <SongCompareCard existing={dup} incoming={s} />
@@ -6492,7 +6927,7 @@ function ImportListModal({ initialCode, onClose, onImportSongs, onJoinEvent, onS
             display: 'flex', alignItems: 'center', gap: 10, background: 'var(--gold-soft)', borderRadius: 10,
             padding: '14px 16px', marginBottom: 18,
           }}>
-            <Ticket size={22} color="#8a6a34" />
+            <Ticket size={22} color="var(--gold-text, #8a6a34)" />
             <div>
               <div style={{ fontWeight: 700, fontSize: 15 }}>{preview.name}</div>
               {preview.date && <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{preview.date}</div>}
@@ -6637,7 +7072,7 @@ function CSVImportModal({ onClose, onImport, mySongs = [] }) {
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                 fontSize: 13.5, fontFamily: 'var(--font-body)', fontWeight: 600, padding: '8px 14px',
-                borderRadius: 6, background: '#fff', color: 'var(--ink)', border: '1px solid var(--line)',
+                borderRadius: 6, background: 'var(--surface, #fff)', color: 'var(--ink)', border: '1px solid var(--line)',
                 textDecoration: 'none',
               }}
             >
@@ -6662,7 +7097,7 @@ function CSVImportModal({ onClose, onImport, mySongs = [] }) {
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
             />
           </div>
-          {parseError && <p style={{ color: '#9C3B2E', fontSize: 12.5, marginTop: 14 }}>{parseError}</p>}
+          {parseError && <p style={{ color: 'var(--danger, #9C3B2E)', fontSize: 12.5, marginTop: 14 }}>{parseError}</p>}
         </>
       )}
 
@@ -6673,7 +7108,7 @@ function CSVImportModal({ onClose, onImport, mySongs = [] }) {
               <strong style={{ color: 'var(--wine)' }}>{result.valid.length}件</strong> 登録できます
             </div>
             {result.errors.length > 0 && (
-              <div style={{ fontSize: 13.5, color: '#9C3B2E' }}>{result.errors.length}件はスキップされます</div>
+              <div style={{ fontSize: 13.5, color: 'var(--danger, #9C3B2E)' }}>{result.errors.length}件はスキップされます</div>
             )}
           </div>
 
@@ -6683,7 +7118,7 @@ function CSVImportModal({ onClose, onImport, mySongs = [] }) {
               borderRadius: 8, padding: '8px 12px', marginBottom: 14,
             }}>
               {result.errors.map((e, i) => (
-                <div key={i} style={{ fontSize: 12, color: '#9C3B2E' }}>{e.row}行目: {e.reason}</div>
+                <div key={i} style={{ fontSize: 12, color: 'var(--danger, #9C3B2E)' }}>{e.row}行目: {e.reason}</div>
               ))}
             </div>
           )}
@@ -6713,7 +7148,7 @@ function CSVImportModal({ onClose, onImport, mySongs = [] }) {
                       {s.title}
                       <span style={{ color: 'var(--ink-soft)' }}> ({s.lyricist} / {s.composer})</span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#8a6a34', marginBottom: 2 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gold-text, #8a6a34)', marginBottom: 2 }}>
                       <Flag size={11} /> 登録済みの曲と一致する可能性があります
                     </div>
                     <SongCompareCard existing={dup} incoming={s} />

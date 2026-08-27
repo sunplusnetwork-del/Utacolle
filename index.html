@@ -4,8 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
     <title>うたコレ</title>
+    <link rel="canonical" href="https://utacolle.com/" />
     <meta name="description" content="自分が歌った・聴いた曲を記録し、プレイリストとして再生できるアプリ" />
     <meta name="google-site-verification" content="YtVw1TWFwSQfeeA6xrPzZ7RVHEmpOPjENBNn8o_oflU" />
+
+    <!-- OGP / X(Twitter)カード: 共有した時にプレビュー(サムネイル)が表示されるようにするための設定。
+         注意: 共有リンクの中身(曲データ)はURLの#以降(フラグメント)に埋め込まれており、これは
+         ブラウザだけが読める部分でサーバーには送られない仕様のため、SNS側のクローラーは中身を
+         見ることができない。そのため「共有した曲そのもの」のサムネイルは技術的に作れず、
+         ここでは「うたコレ」というアプリ自体の共通の画像・説明文を表示する形にしている。
+         曲ごとに違うサムネイルを出したい場合は、共有リンクごとにサーバー側でHTMLを動的生成する
+         仕組み(簡単なサーバーレス関数など)が別途必要になる。 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="うたコレ" />
+    <meta property="og:title" content="うたコレ" />
+    <meta property="og:description" content="自分が歌った・聴いた曲を記録し、プレイリストとして再生できるアプリ" />
+    <meta property="og:url" content="https://utacolle.com/" />
+    <meta property="og:image" content="https://utacolle.com/og-image.png" />
+    <meta property="og:image:width" content="640" />
+    <meta property="og:image:height" content="360" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="うたコレ" />
+    <meta name="twitter:description" content="自分が歌った・聴いた曲を記録し、プレイリストとして再生できるアプリ" />
+    <meta name="twitter:image" content="https://utacolle.com/og-image.png" />
 
     <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#7A2E2E" />
