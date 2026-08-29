@@ -8,7 +8,7 @@ import {
   Music2, Plus, Search, Users, Share2, Copy, Trash2, Pencil, Shuffle,
   X, Check, UserPlus, UserMinus, ExternalLink, Sparkles, ChevronLeft, ChevronRight, ChevronUp,
   User, ChevronDown, Loader2, Ticket, BookOpen, Eye, EyeOff, Film, FileText, QrCode,
-  Radar, MapPin, Bell, Ban, Flag, ShieldCheck, Lock, Camera, VolumeX, GripVertical,
+  Radar, MapPin, Bell, Ban, Flag, ShieldCheck, Lock, Camera, VolumeX, GripVertical, Gift,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -177,6 +177,18 @@ const LAST_SEEN_CHANGELOG_KEY = 'chorusdb:last-seen-changelog'; // 「お知ら�
    起動時、前回このお知らせを見た時より新しい項目があれば、自動でポップアップ表示する。
    マイページの「お知らせ」からは、いつでも全履歴を見返せる。 */
 const CHANGELOG = [
+  {
+    version: '2026-08-28',
+    items: [
+      'スターターパックVol.1に、実際の合唱曲100曲を追加しました。ぜひ開封してみてください！',
+    ],
+  },
+  {
+    version: '2026-08-26',
+    items: [
+      '新機能「スターターパック」を追加しました。コレクションタブの隣から、あらかじめ用意された曲セットの中からランダムで10曲を、ガチャのような演出付きで引けます(1パックにつき24時間に1回)',
+    ],
+  },
   {
     version: '2026-08-23',
     items: [
@@ -1545,6 +1557,169 @@ function emptySongDraft() {
     sungRecord: { concertName: '', date: '', place: '', choir: '', conductor: '', memo: '' },
   };
 }
+
+/* ---- スターターパック(運営があらかじめ用意する曲セット) ----
+   開封すると、パックの曲プールからランダムでSTARTER_PACK_DRAW_COUNT曲(プールがそれ未満ならプール全体)
+   が選ばれ、ガチャ演出のあとコレクションに追加できる。
+   新しいパックを追加したい場合は、下のSTARTER_PACKS配列に新しいオブジェクトを追加するだけでよい
+   (配列の先頭に置くと一覧の上に表示される)。1曲ずつ starterSong({...}) の形で曲情報を並べる。
+   ここに入れる項目名は曲の登録フォームと同じ(title/lyricist/composer/formation/videoUrl など)。 */
+function starterSong(overrides) {
+  return { ...emptySongDraft(), ...overrides };
+}
+
+const STARTER_PACK_OPENED_KEY = 'chorusdb:starter-pack-opened'; // { [packId]: 最後に開封したtimestamp }
+const STARTER_PACK_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 同じパックを再度開けるまでの時間(24時間)
+const STARTER_PACK_DRAW_COUNT = 10; // 1回の開封で選ばれる曲数
+
+function loadStarterPackOpenedMap() {
+  try {
+    const raw = localStorage.getItem(STARTER_PACK_OPENED_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+}
+function saveStarterPackOpenedAt(packId, timestamp) {
+  try {
+    const map = loadStarterPackOpenedMap();
+    map[packId] = timestamp;
+    localStorage.setItem(STARTER_PACK_OPENED_KEY, JSON.stringify(map));
+  } catch (e) { /* noop */ }
+}
+// 残りクールダウン(ミリ秒)。0以下なら開封可能。
+function getStarterPackCooldownRemaining(packId) {
+  const map = loadStarterPackOpenedMap();
+  const openedAt = map[packId];
+  if (!openedAt) return 0;
+  return Math.max(0, STARTER_PACK_COOLDOWN_MS - (Date.now() - openedAt));
+}
+function formatCooldown(ms) {
+  const totalMin = Math.ceil(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return `あと${h}時間${m}分`;
+  return `あと${m}分`;
+}
+// パックの曲プールから、重複しないようSTARTER_PACK_DRAW_COUNT曲をランダムに選ぶ(Fisher-Yates)
+function drawStarterPackSongs(pack) {
+  const pool = [...pack.songs];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.min(STARTER_PACK_DRAW_COUNT, pool.length));
+}
+
+const STARTER_PACKS = [
+  {
+    id: 'starter-pack-vol1',
+    name: 'スターターパックVol.1',
+    description: '合唱の定番曲を中心に集めた100曲セットです。',
+    songs: [
+      starterSong({ title: '春に', suiteGenre: '混声合唱曲集', suiteTitle: '地平線のかなたへ', lyricist: '谷川俊太郎', composer: '木下牧子', year: '1992', formation: '混声', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/L_0H3wBgyCE?si=Zv0AsPTC4A8YsGDB', suiteOrder: 1 }),
+      starterSong({ title: 'サッカーによせて', suiteGenre: '混声合唱曲集', suiteTitle: '地平線のかなたへ', lyricist: '谷川俊太郎', composer: '木下牧子', year: '1992', formation: '混声', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/FAyPSudXXZw?si=pHfKO5K_EfW0AtTg', suiteOrder: 2 }),
+      starterSong({ title: '二十億光年の孤独', suiteGenre: '混声合唱曲集', suiteTitle: '地平線のかなたへ', lyricist: '谷川俊太郎', composer: '木下牧子', year: '1992', formation: '混声', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/vSy0FoM5N2s?si=FeGmTcn8_dAKDB65', suiteOrder: 3 }),
+      starterSong({ title: '卒業式', suiteGenre: '混声合唱曲集', suiteTitle: '地平線のかなたへ', lyricist: '谷川俊太郎', composer: '木下牧子', year: '1992', formation: '混声', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/UzD-vJm0_Rg?si=10oFTiCgZrHidQie', suiteOrder: 4 }),
+      starterSong({ title: 'ネロ-愛された小さな犬に', suiteGenre: '混声合唱曲集', suiteTitle: '地平線のかなたへ', lyricist: '谷川俊太郎', composer: '木下牧子', year: '1992', formation: '混声', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/bbkS-HDiUFY?si=Bc5Gmpap6vI3MKc3', suiteOrder: 5 }),
+      starterSong({ title: '鴎', lyricist: '三好達治', composer: '木下牧子', formation: '混声', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/OwD8Yt-zeHs?si=nKnLWONfQI1WyxwQ' }),
+      starterSong({ title: '夢みたものは', lyricist: '立原道造', composer: '木下牧子', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/F9DRLEbbAd4?si=ij_4ZfNhdXCaprkS' }),
+      starterSong({ title: '聞こえる', lyricist: '岩間芳樹', composer: '新実徳英', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/1tS5O9Co1UQ?si=qE6Rps7q7NJpOSgq' }),
+      starterSong({ title: 'ぜんぶ', suiteGenre: 'さくらももこの詩による無伴奏混声合唱曲集', suiteTitle: 'ぜんぶ ここに', lyricist: 'さくらももこ', composer: '相澤直人', formation: '混声', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/gDS862u8nZg?si=vB_ZWZ_RUMQ9h-pu', suiteOrder: 11 }),
+      starterSong({ title: '雨', suiteGenre: '混声合唱組曲', suiteTitle: '水のいのち', lyricist: '高野喜久雄', composer: '高田三郎', year: '1964', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/wDSW0pETx0c?si=4l2DdtxQrhXZEn9N', suiteOrder: 1 }),
+      starterSong({ title: '水たまり', suiteGenre: '混声合唱組曲', suiteTitle: '水のいのち', lyricist: '高野喜久雄', composer: '高田三郎', year: '1964', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/JkMnbpA2K3Q?si=l7wJXfbqxqlXXnxn', suiteOrder: 2 }),
+      starterSong({ title: '川', suiteGenre: '混声合唱組曲', suiteTitle: '水のいのち', lyricist: '高野喜久雄', composer: '高田三郎', year: '1964', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/dyvdd9wUy5M?si=Grma1AYabVzYNpW2', suiteOrder: 3 }),
+      starterSong({ title: '海', suiteGenre: '混声合唱組曲', suiteTitle: '水のいのち', lyricist: '高野喜久雄', composer: '高田三郎', year: '1964', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/lAlMC0YSIN4?si=a0GAgjvofesLY8lQ', suiteOrder: 4 }),
+      starterSong({ title: '海よ', suiteGenre: '混声合唱組曲', suiteTitle: '水のいのち', lyricist: '高野喜久雄', composer: '高田三郎', year: '1964', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/GjV5eBa64iM?si=WWyOpkr4f-JHloed', suiteOrder: 5 }),
+      starterSong({ title: '河口', suiteGenre: '混声合唱組曲', suiteTitle: '筑後川', lyricist: '丸山豊', composer: '團伊玖磨', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/RZele9k6bhg?si=EA10j1AzXSf5MjUC' }),
+      starterSong({ title: '蔵王讃歌', suiteGenre: '混声合唱組曲', suiteTitle: '蔵王', lyricist: '尾崎左永子', composer: '佐藤眞', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/ukZr2BcrCnw?si=0EXVAQbQ8HYn5e9-', suiteOrder: 1 }),
+      starterSong({ title: '風に', titleKana: 'かぜに', suiteGenre: '八戸東高等学校創立90周年記念歌', lyricist: '宇藤敬子', composer: '伊藤千蔵', formation: '女声', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/WyK3WrwzLDI?si=kUlvpediNcyPljc9' }),
+      starterSong({ title: 'ひらく', suiteGenre: '混声合唱曲', suiteTitle: '季節へのまなざし', lyricist: '伊藤海彦', composer: '荻久保和明', year: '1978', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/upJwiacWBhM?si=j4WS_we64s3dO18K', suiteOrder: 1 }),
+      starterSong({ title: 'のびる', suiteGenre: '混声合唱曲', suiteTitle: '季節へのまなざし', lyricist: '伊藤海彦', composer: '荻久保和明', year: '1978', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/uBpfasD9dyQ?si=MPdNS44tVqd1DAUA', suiteOrder: 2 }),
+      starterSong({ title: 'みのる', suiteGenre: '混声合唱曲', suiteTitle: '季節へのまなざし', lyricist: '伊藤海彦', composer: '荻久保和明', year: '1978', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/cFhzONInRGc?si=dBqvz6Jm12XsbnkX', suiteOrder: 3 }),
+      starterSong({ title: 'ゆめみる', suiteGenre: '混声合唱曲', suiteTitle: '季節へのまなざし', lyricist: '伊藤海彦', composer: '荻久保和明', year: '1978', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/67M29rQzmQs?si=ZWizsS5WnTTXVsC0', suiteOrder: 4 }),
+      starterSong({ title: 'よろこび', suiteGenre: '混声合唱組曲', suiteTitle: '小さないのち', lyricist: 'みずかみかずよ', composer: '荻久保和明', year: '2011', formation: '混声四部', accompaniment: 'アカペラ', language: '日本語', videoUrl: 'https://youtu.be/8DikIvxci_8?si=l3nuFG7EiywrJUSc', scoreSource: 'https://store.kyogei.co.jp/products/detail/523', suiteOrder: 1 }),
+      starterSong({ title: 'いのち', suiteGenre: '混声合唱組曲', suiteTitle: '小さないのち', lyricist: 'みずかみかずよ', composer: '荻久保和明', year: '2011', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', scoreSource: 'https://store.kyogei.co.jp/products/detail/523', suiteOrder: 2 }),
+      starterSong({ title: 'たとえば・・・・・・', suiteGenre: '混声合唱組曲', suiteTitle: '小さないのち', lyricist: 'みずかみかずよ', composer: '荻久保和明', year: '2011', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', scoreSource: 'https://store.kyogei.co.jp/products/detail/523', suiteOrder: 3 }),
+      starterSong({ title: '夜の雪', suiteGenre: '混声合唱組曲', suiteTitle: '小さないのち', lyricist: 'みずかみかずよ', composer: '荻久保和明', year: '2011', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', scoreSource: 'https://store.kyogei.co.jp/products/detail/523', suiteOrder: 4 }),
+      starterSong({ title: '小さないのち', suiteGenre: '混声合唱組曲', suiteTitle: '小さないのち', lyricist: 'みずかみかずよ', composer: '荻久保和明', year: '2011', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://store.kyogei.co.jp/products/detail/523', suiteOrder: 5 }),
+      starterSong({ title: '風に寄せて　その１', suiteGenre: '混声合唱組曲', suiteTitle: '風に寄せて［改定新版］', lyricist: '立原道造', composer: '尾形敏幸', year: '2025', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/asBzxwbuZ0Q?si=-_PY1paybGxprZEA', scoreSource: 'https://www.ongakunotomo.co.jp/catalog/detail.php?id=546050', suiteOrder: 1 }),
+      starterSong({ title: '風に寄せて　その２', suiteGenre: '混声合唱組曲', suiteTitle: '風に寄せて［改定新版］', lyricist: '立原道造', composer: '尾形敏幸', year: '2025', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/Fcr37902AmA?si=IDuMZhZIu9Zct6Em', scoreSource: 'https://www.ongakunotomo.co.jp/catalog/detail.php?id=546051', suiteOrder: 2 }),
+      starterSong({ title: '風に寄せて　その５', suiteGenre: '混声合唱組曲', suiteTitle: '風に寄せて［改定新版］', lyricist: '立原道造', composer: '尾形敏幸', year: '2025', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/2aIEfMm9xpE?si=6QZxNGiIHX4DIXaH', scoreSource: 'https://www.ongakunotomo.co.jp/catalog/detail.php?id=546052', suiteOrder: 3 }),
+      starterSong({ title: '風の子守歌', suiteGenre: '混声合唱曲集', suiteTitle: '六つの子守歌', lyricist: '別役実', composer: '池辺晋一郎', year: '1973', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/xi-o4Ukn5pM?si=SZ70vHZXsfOAm9WE', scoreSource: 'https://www.editionkawai.jp/item/detail/91029/', suiteOrder: 1 }),
+      starterSong({ title: '空と海の子守歌', suiteGenre: '混声合唱曲集', suiteTitle: '六つの子守歌', lyricist: '別役実', composer: '池辺晋一郎', year: '1973', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/_3vy8cMEk8o?si=qZkUdTIIKyu0eqoT', scoreSource: 'https://www.editionkawai.jp/item/detail/91029/', suiteOrder: 2 }),
+      starterSong({ title: 'いつもの子守歌', suiteGenre: '混声合唱曲集', suiteTitle: '六つの子守歌', lyricist: '別役実', composer: '池辺晋一郎', year: '1973', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/0iPh7-JTrFc?si=jWDdzmrgErVdRoTO', scoreSource: 'https://www.editionkawai.jp/item/detail/91029/', suiteOrder: 3 }),
+      starterSong({ title: '思い出の子守歌', suiteGenre: '混声合唱曲集', suiteTitle: '六つの子守歌', lyricist: '別役実', composer: '池辺晋一郎', year: '1973', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/2uGW3BtndvQ?si=qzVVwaHxcT0oOfVk', scoreSource: 'https://www.editionkawai.jp/item/detail/91029/', suiteOrder: 4 }),
+      starterSong({ title: 'おさかなの子守歌', suiteGenre: '混声合唱曲集', suiteTitle: '六つの子守歌', lyricist: '別役実', composer: '池辺晋一郎', year: '1973', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/UcXf-Y_6J6I?si=TJ3j2eXDfxQp7srX', scoreSource: 'https://www.editionkawai.jp/item/detail/91029/', suiteOrder: 5 }),
+      starterSong({ title: '眠っちゃいけない子守歌', suiteGenre: '混声合唱曲集', suiteTitle: '六つの子守歌', lyricist: '別役実', composer: '池辺晋一郎', year: '1973', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/mdGI-fKskPM?si=pRcuf8uUpx_cyrgZ', scoreSource: 'https://www.editionkawai.jp/item/detail/91029/', suiteOrder: 6 }),
+      starterSong({ title: '光よ　そして緑', suiteGenre: '混声合唱曲集', suiteTitle: '終わりのない歌', lyricist: '銀色夏生', composer: '上田真樹', year: '2017', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/C3ynwlBz778?si=O3o44Dp3POx5syLG', suiteOrder: 1 }),
+      starterSong({ title: '月の夜', suiteGenre: '混声合唱曲集', suiteTitle: '終わりのない歌', lyricist: '銀色夏生', composer: '上田真樹', year: '2017', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/e6jaWCByKJo?si=RDg5Ik_GSa6auleZ', suiteOrder: 2 }),
+      starterSong({ title: '強い感情が僕を襲った', suiteGenre: '混声合唱曲集', suiteTitle: '終わりのない歌', lyricist: '銀色夏生', composer: '上田真樹', year: '2017', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', suiteOrder: 3 }),
+      starterSong({ title: '終わりのない歌', suiteGenre: '混声合唱曲集', suiteTitle: '終わりのない歌', lyricist: '銀色夏生', composer: '上田真樹', year: '2017', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/9GBTcJUMJMM?si=qVvMG6jzxXBLZ_q5', suiteOrder: 4 }),
+      starterSong({ title: '君のそばで会おう', suiteGenre: '混声合唱曲集', suiteTitle: '終わりのない歌', lyricist: '銀色夏生', composer: '上田真樹', year: '2017', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/ZqhdErUixhE?si=nPFWWMU_usKiFCpt', suiteOrder: 5 }),
+      starterSong({ title: 'あなたのことを', suiteGenre: '混声合唱のための', lyricist: '銀色夏生', composer: '上田真樹', year: '2017', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/O8VrMf82Hxg?si=ft8fg4ujLSbhBNO6' }),
+      starterSong({ title: '再会', suiteGenre: '混声合唱組曲', suiteTitle: '光る砂漠', lyricist: '矢澤宰', composer: '萩原英彦', year: '1971', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/hHtD6qqnWpo?si=4E6IOFUtz0V5x-8e', suiteOrder: 1 }),
+      starterSong({ title: '恋の詩でも読んだあとのように', suiteGenre: '混声合唱組曲', suiteTitle: '光る砂漠', lyricist: '矢澤宰', composer: '萩原英彦', year: '1971', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/VFJXzlqThXA?si=c8oFomX4z-9JnecV', suiteOrder: 2 }),
+      starterSong({ title: '早春', suiteGenre: '混声合唱組曲', suiteTitle: '光る砂漠', lyricist: '矢澤宰', composer: '萩原英彦', year: '1971', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/lg_yas3rF-o?si=NAQFBz8JFmyT2lcU', suiteOrder: 3 }),
+      starterSong({ title: '海辺で', suiteGenre: '混声合唱組曲', suiteTitle: '光る砂漠', lyricist: '矢澤宰', composer: '萩原英彦', year: '1971', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/lWtQH17hr38?si=dDv5HQ8SWiJaqEcZ', suiteOrder: 4 }),
+      starterSong({ title: 'ほたるは星になった', suiteGenre: '混声合唱組曲', suiteTitle: '光る砂漠', lyricist: '矢澤宰', composer: '萩原英彦', year: '1971', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/skJpjHrvBr8?si=QgSDvtbwEzHyXwHE', suiteOrder: 5 }),
+      starterSong({ title: '落石', suiteGenre: '混声合唱組曲', suiteTitle: '光る砂漠', lyricist: '矢澤宰', composer: '萩原英彦', year: '1971', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/QJpeTGNgvtI?si=4vF-NXErc7zh3BNL', suiteOrder: 6 }),
+      starterSong({ title: '秋の午後', suiteGenre: '混声合唱組曲', suiteTitle: '光る砂漠', lyricist: '矢澤宰', composer: '萩原英彦', year: '1971', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/8Hy_dTJpq4s?si=GxNwgLgNmBAEi9FU', suiteOrder: 7 }),
+      starterSong({ title: 'さびしい道', suiteGenre: '混声合唱組曲', suiteTitle: '光る砂漠', lyricist: '矢澤宰', composer: '萩原英彦', year: '1971', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/AzeEgI1lJJ4?si=CXLwRjubBOemM0YJ', suiteOrder: 8 }),
+      starterSong({ title: 'ふるさと', suiteGenre: '混声合唱組曲', suiteTitle: '光る砂漠', lyricist: '矢澤宰', composer: '萩原英彦', year: '1971', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/uEpuMxvtJdY?si=r4ATnCaJiF7vVWIQ', suiteOrder: 9 }),
+      starterSong({ title: 'たんぽぽ', suiteGenre: '混声合唱とピアノのための', suiteTitle: '花に寄せて', lyricist: '星野富弘', composer: '新実徳英', year: '1986', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/ZTt4VtjzdEo?si=rv6-i54dVgRAgpT2', suiteOrder: 1 }),
+      starterSong({ title: 'ねこじゃらし', suiteGenre: '混声合唱とピアノのための', suiteTitle: '花に寄せて', lyricist: '星野富弘', composer: '新実徳英', year: '1986', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/n9F5smpxRYc?si=ExuiZIXgk9UKnF7y', suiteOrder: 2 }),
+      starterSong({ title: 'しおん', suiteGenre: '混声合唱とピアノのための', suiteTitle: '花に寄せて', lyricist: '星野富弘', composer: '新実徳英', year: '1986', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/KVjgwWGoxRI?si=kTpjWk2MYXD8EH1T', suiteOrder: 3 }),
+      starterSong({ title: 'つばき・やぶかんぞう・あさがお', suiteGenre: '混声合唱とピアノのための', suiteTitle: '花に寄せて', lyricist: '星野富弘', composer: '新実徳英', year: '1986', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/gKIz8Cigo78?si=7cxQshlqRGjTywOp', suiteOrder: 4 }),
+      starterSong({ title: 'てっせん・どくだみ', suiteGenre: '混声合唱とピアノのための', suiteTitle: '花に寄せて', lyricist: '星野富弘', composer: '新実徳英', year: '1986', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/u2FfAIef1jM?si=fvrX6I3W8vqtNnOh', suiteOrder: 5 }),
+      starterSong({ title: 'みょうが', suiteGenre: '混声合唱とピアノのための', suiteTitle: '花に寄せて', lyricist: '星野富弘', composer: '新実徳英', year: '1986', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/GrDgC3fAYQk?si=5A_teHKsB6il6Yqi', suiteOrder: 6 }),
+      starterSong({ title: 'ばら・きく・なずな－母に捧ぐ－', suiteGenre: '混声合唱とピアノのための', suiteTitle: '花に寄せて', lyricist: '星野富弘', composer: '新実徳英', year: '1986', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/7y3IgHTAJWE?si=491hhbW5445OJbmA', suiteOrder: 7 }),
+      starterSong({ title: '島よ', suiteGenre: '混声合唱組曲', suiteTitle: '島よ', lyricist: '伊藤海彦', composer: '大中恩', year: '1970', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/QTD5fvecCHw?si=eSRHtG4ERybB1Ge4', suiteOrder: 1 }),
+      starterSong({ title: '岬の墓', suiteGenre: '混声合唱曲', suiteTitle: '岬の墓', lyricist: '堀田善衛', composer: '團伊玖磨', year: '1963', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/s26zTVH--O4?si=MBVekujM7LdVEM9y', suiteOrder: 1 }),
+      starterSong({ title: 'みなかみ', suiteGenre: '混声合唱組曲', suiteTitle: '筑後川', lyricist: '丸山豊', composer: '團伊玖磨', year: '1968', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/AWw7oNOkQLs?si=ydK27eu-7Hg4CuWM', suiteOrder: 1 }),
+      starterSong({ title: 'ダムにて', suiteGenre: '混声合唱組曲', suiteTitle: '筑後川', lyricist: '丸山豊', composer: '團伊玖磨', year: '1968', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/2RPUDz2k6gU?si=d6axzN56m-7Uh5lS', suiteOrder: 2 }),
+      starterSong({ title: '銀の魚', suiteGenre: '混声合唱組曲', suiteTitle: '筑後川', lyricist: '丸山豊', composer: '團伊玖磨', year: '1968', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/hOyN0Wq8zWE?si=tRFMsqJwpHCv-xhV', suiteOrder: 3 }),
+      starterSong({ title: '川の祭', suiteGenre: '混声合唱組曲', suiteTitle: '筑後川', lyricist: '丸山豊', composer: '團伊玖磨', year: '1968', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/7cQ8-jSiamg?si=Z9asCPAF9hlt93Ig', suiteOrder: 4 }),
+      starterSong({ title: '蔵王讃歌', suiteGenre: '混声合唱のための組曲', suiteTitle: '蔵王　[改訂新版]', lyricist: '尾崎左永子', composer: '佐藤眞', year: '1961', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/iZEiIQ5T7GM?si=t6XwSn7WazgsFg63', suiteOrder: 1 }),
+      starterSong({ title: '投げよう林檎を', suiteGenre: '混声合唱のための組曲', suiteTitle: '蔵王　[改訂新版]', lyricist: '尾崎左永子', composer: '佐藤眞', year: '1961', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/E7FQmktGR7A?si=ZEArL4dbo8EiV--s', suiteOrder: 2 }),
+      starterSong({ title: '苔の花', suiteGenre: '混声合唱のための組曲', suiteTitle: '蔵王　[改訂新版]', lyricist: '尾崎左永子', composer: '佐藤眞', year: '1961', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/uED3r5bkA2U?si=t5i6Bx2GvgYweAKd', suiteOrder: 3 }),
+      starterSong({ title: 'どっこ沼', suiteGenre: '混声合唱のための組曲', suiteTitle: '蔵王　[改訂新版]', lyricist: '尾崎左永子', composer: '佐藤眞', year: '1961', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/X8ct92_-sk0?si=2gaWepmaOstBdwsu', suiteOrder: 4 }),
+      starterSong({ title: 'おはなし', suiteGenre: '混声合唱のための組曲', suiteTitle: '蔵王　[改訂新版]', lyricist: '尾崎左永子', composer: '佐藤眞', year: '1961', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/2SK4MNVq-Sw?si=PPTBez0j-j6oASh6', suiteOrder: 5 }),
+      starterSong({ title: '雪むすめ', suiteGenre: '混声合唱のための組曲', suiteTitle: '蔵王　[改訂新版]', lyricist: '尾崎左永子', composer: '佐藤眞', year: '1961', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/KqfTp1562P4?si=KZ7Yfj5mPl4Xmi6A', suiteOrder: 6 }),
+      starterSong({ title: '吹雪', suiteGenre: '混声合唱のための組曲', suiteTitle: '蔵王　[改訂新版]', lyricist: '尾崎左永子', composer: '佐藤眞', year: '1961', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/TZ1KZiNJq84?si=5z1drqnYXh2PPVK2', suiteOrder: 7 }),
+      starterSong({ title: '樹氷林', suiteGenre: '混声合唱のための組曲', suiteTitle: '蔵王　[改訂新版]', lyricist: '尾崎左永子', composer: '佐藤眞', year: '1961', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/NMmw1uASy8k?si=r2eDLlPBk0ddn34T', suiteOrder: 8 }),
+      starterSong({ title: '早春', suiteGenre: '混声合唱のための組曲', suiteTitle: '蔵王　[改訂新版]', lyricist: '尾崎左永子', composer: '佐藤眞', year: '1961', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/R63D3TeZyls?si=zYg4eDu1S9BqaIiN', suiteOrder: 9 }),
+      starterSong({ title: '木とともに　人とともに', suiteGenre: '混声合唱曲集', suiteTitle: '木とともに　人とともに', lyricist: '谷川俊太郎', composer: '三善晃', year: '1999', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/kCQKmGlC4V0?si=vLxTmG3_1Qge_hiu', suiteOrder: 1 }),
+      starterSong({ title: '空', suiteGenre: '混声合唱曲集', suiteTitle: '木とともに　人とともに', lyricist: '谷川俊太郎', composer: '三善晃', year: '1999', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/-WnLgAcgYC0?si=yH8zNlfGfPFlNEYw', suiteOrder: 2 }),
+      starterSong({ title: '生きる', suiteGenre: '混声合唱曲集', suiteTitle: '木とともに　人とともに', lyricist: '谷川俊太郎', composer: '三善晃', year: '1999', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/tXCRpzfe37w?si=be8GSZvdsNSeEo5O', suiteOrder: 3 }),
+      starterSong({ title: '遠くに', suiteGenre: '混声合唱とピアノのための', suiteTitle: '音楽のとき～6つのワルツ', lyricist: '川崎洋', composer: '新実徳英', year: '2000', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', suiteOrder: 1 }),
+      starterSong({ title: 'ギターを抱いて', suiteGenre: '混声合唱とピアノのための', suiteTitle: '音楽のとき～6つのワルツ', lyricist: '川崎洋', composer: '新実徳英', year: '2000', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', suiteOrder: 2 }),
+      starterSong({ title: '都合のいい哲学', suiteGenre: '混声合唱とピアノのための', suiteTitle: '音楽のとき～6つのワルツ', lyricist: '川崎洋', composer: '新実徳英', year: '2000', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', suiteOrder: 3 }),
+      starterSong({ title: '鳥と', suiteGenre: '混声合唱とピアノのための', suiteTitle: '音楽のとき～6つのワルツ', lyricist: '川崎洋', composer: '新実徳英', year: '2000', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', suiteOrder: 4 }),
+      starterSong({ title: '自分の声を', suiteGenre: '混声合唱とピアノのための', suiteTitle: '音楽のとき～6つのワルツ', lyricist: '川崎洋', composer: '新実徳英', year: '2000', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', suiteOrder: 5 }),
+      starterSong({ title: '雀のさえずりも', suiteGenre: '混声合唱とピアノのための', suiteTitle: '音楽のとき～6つのワルツ', lyricist: '川崎洋', composer: '新実徳英', year: '2000', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', suiteOrder: 6 }),
+      starterSong({ title: '草の夜', suiteGenre: '混声合唱組曲', suiteTitle: '五月を送るうた', lyricist: '中井英夫', composer: '松下功', year: '1989', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/95-spvdrLv8?si=hyHxMoUV6CSZfbo_' }),
+      starterSong({ title: '薔薇に寄す', suiteGenre: '混声合唱組曲', suiteTitle: '五月を送るうた', lyricist: '中井英夫', composer: '松下功', year: '1989', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/FfK2ZltyPdo?si=sY-aZ1zbXOIgp1Wk' }),
+      starterSong({ title: '旅立ち', suiteGenre: '混声合唱組曲', suiteTitle: '五月を送るうた', lyricist: '中井英夫', composer: '松下功', year: '1989', formation: '混声四部', accompaniment: 'アカペラ', language: '日本語', videoUrl: 'https://youtu.be/TpAFw-pHueQ?si=89VOdRp7XiE-O5kv' }),
+      starterSong({ title: '小犬と蛇', suiteGenre: '混声合唱組曲', suiteTitle: '五月を送るうた', lyricist: '中井英夫', composer: '松下功', year: '1989', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語' }),
+      starterSong({ title: '月との喧嘩', suiteGenre: '混声合唱組曲', suiteTitle: '五月を送るうた', lyricist: '中井英夫', composer: '松下功', year: '1989', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/0ipNFpjx_T4?si=EB5RMcMXtS9RI_EJ' }),
+      starterSong({ title: 'くりや風物', suiteGenre: '混声合唱組曲', suiteTitle: '五月を送るうた', lyricist: '中井英夫', composer: '松下功', year: '1989', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語' }),
+      starterSong({ title: '古い館の詩', suiteGenre: '混声合唱組曲', suiteTitle: '五月を送るうた', lyricist: '中井英夫', composer: '松下功', year: '1989', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/wesKIERtEFQ?si=NJd8GpamVfsT0I5J' }),
+      starterSong({ title: '五月の入口', suiteGenre: '混声合唱組曲', suiteTitle: '五月を送るうた', lyricist: '中井英夫', composer: '松下功', year: '1989', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/Oqi6bZFvj0E?si=dEAYzvPFw3YxqIHq' }),
+      starterSong({ title: '海と蝶', suiteGenre: '混声合唱組曲', suiteTitle: '海の構図', lyricist: '小林純一', composer: '中田喜直', year: '1964', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/9MX5E8KuSZA?si=9yEKOlu-cR1MTb7o' }),
+      starterSong({ title: '海女礼讃', suiteGenre: '混声合唱組曲', suiteTitle: '海の構図', lyricist: '小林純一', composer: '中田喜直', year: '1964', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語' }),
+      starterSong({ title: 'かもめの歌', suiteGenre: '混声合唱組曲', suiteTitle: '海の構図', lyricist: '小林純一', composer: '中田喜直', year: '1964', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語' }),
+      starterSong({ title: '神話の巨人', suiteGenre: '混声合唱組曲', suiteTitle: '海の構図', lyricist: '小林純一', composer: '中田喜直', year: '1964', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語' }),
+      starterSong({ title: '風が', suiteGenre: '混声合唱組曲', suiteTitle: '心の四季', lyricist: '吉野弘', composer: '高田三郎', year: '1967', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/TyRg445o1M0?si=jBr8_IoTnnZCz0gJ' }),
+      starterSong({ title: 'みずすまし', suiteGenre: '混声合唱組曲', suiteTitle: '心の四季', lyricist: '吉野弘', composer: '高田三郎', year: '1967', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/NX3hyHmQ7lY?si=gGjMY88UZmAd5_Vn' }),
+      starterSong({ title: '流れ', suiteGenre: '混声合唱組曲', suiteTitle: '心の四季', lyricist: '吉野弘', composer: '高田三郎', year: '1967', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/Y-YmCOsNA_E?si=UVsIrCkRX3DKJ0SN' }),
+      starterSong({ title: '山が', suiteGenre: '混声合唱組曲', suiteTitle: '心の四季', lyricist: '吉野弘', composer: '高田三郎', year: '1967', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/fGmTmiJj4Zg?si=lQq7wsm93yUKXBE0' }),
+      starterSong({ title: '愛そして風', suiteGenre: '混声合唱組曲', suiteTitle: '心の四季', lyricist: '吉野弘', composer: '高田三郎', year: '1967', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/MKLRv2Dk-kI?si=6xAWTQLDRhzuuyXM' }),
+      starterSong({ title: '雪の日に', suiteGenre: '混声合唱組曲', suiteTitle: '心の四季', lyricist: '吉野弘', composer: '高田三郎', year: '1967', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/eNj-drdHP24?si=csdu7xqBY3D1O28Y' }),
+      starterSong({ title: '真昼の星', suiteGenre: '混声合唱組曲', suiteTitle: '心の四季', lyricist: '吉野弘', composer: '高田三郎', year: '1967', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/BAKgzeCM_BQ?si=eIHG1LIKeiicryug' }),
+    ],
+  },
+];
 
 const SUNG_TAG_NAME = '歌ったことある';
 function hasSungRecordContent(rec) {
@@ -3828,6 +4003,14 @@ export default function App() {
     }
   };
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [openingStarterPack, setOpeningStarterPack] = useState(null); // 開封中のスターターパック
+  const [, forceCooldownRefresh] = useState(0);
+  useEffect(() => {
+    // スターターパックのクールダウン表示を定期的に更新する(厳密なリアルタイムでなくてよいので1分間隔)
+    if (view !== 'starterpack') return undefined;
+    const t = setInterval(() => forceCooldownRefresh((n) => n + 1), 60000);
+    return () => clearInterval(t);
+  }, [view]);
   const [showShareList, setShowShareList] = useState(false);
   const [showImportList, setShowImportList] = useState(false);
   const [importListInitialCode, setImportListInitialCode] = useState('');
@@ -5051,6 +5234,7 @@ export default function App() {
       {/* ナビ */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 22, borderBottom: '1px solid var(--line)', paddingTop: 4 }}>
         <NavTab active={view === 'mydb'} onClick={() => setView('mydb')} icon={<Ticket size={15} />} label="コレクション" color="var(--wine)" />
+        <NavTab active={view === 'starterpack'} onClick={() => setView('starterpack')} icon={<Gift size={15} />} label="スターターパック" color="var(--sage)" />
         {SOCIAL_FEATURES_ENABLED && (
           <NavTab active={view === 'discover'} onClick={() => { setView('discover'); setViewedUserId(null); }} icon={<Users size={15} />} label="さがす" color="var(--gold)" />
         )}
@@ -5414,6 +5598,49 @@ export default function App() {
         </div>
       )}
 
+      {/* ---- スターターパック ---- */}
+      {view === 'starterpack' && (
+        <div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17, marginBottom: 4 }}>
+              <Gift size={16} color="var(--sage)" style={{ verticalAlign: -2, marginRight: 4 }} />
+              スターターパック
+            </div>
+            <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', lineHeight: 1.7, margin: 0 }}>
+              あらかじめ用意された曲セットの中から、ランダムで{STARTER_PACK_DRAW_COUNT}曲がコレクションに追加できます。
+              1つのパックを開封すると、そのパックは24時間再度開封できません。
+            </p>
+          </div>
+          {STARTER_PACKS.length === 0 && (
+            <EmptyState title="開封できるパックがありません" body="また今度のぞいてみてください。" />
+          )}
+          {STARTER_PACKS.map((pack) => {
+            const cooldown = getStarterPackCooldownRemaining(pack.id);
+            return (
+              <div key={pack.id} style={{
+                background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12,
+                padding: 18, marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14.5, marginBottom: 4 }}>{pack.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-soft)', lineHeight: 1.6 }}>{pack.description}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>収録曲数: {pack.songs.length}曲</div>
+                </div>
+                {cooldown > 0 ? (
+                  <Button variant="quiet" disabled>
+                    <Lock size={13} /> {formatCooldown(cooldown)}
+                  </Button>
+                ) : (
+                  <Button variant="sage" onClick={() => setOpeningStarterPack(pack)}>
+                    <Gift size={14} /> 開封する(広告30秒)
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* ---- マイDB ---- */}
       {view === 'mydb' && (
         <div>
@@ -5740,6 +5967,15 @@ export default function App() {
 
       {showCsvImport && (
         <CSVImportModal onClose={() => setShowCsvImport(false)} onImport={bulkImportSongs} mySongs={mySongsRaw} />
+      )}
+
+      {openingStarterPack && (
+        <StarterPackGachaModal
+          pack={openingStarterPack}
+          mySongs={mySongsRaw}
+          onClose={() => setOpeningStarterPack(null)}
+          onImport={bulkImportSongs}
+        />
       )}
 
       {showWhatsNew && (
@@ -6984,6 +7220,163 @@ function ImportListModal({ initialCode, onClose, onImportSongs, onJoinEvent, onS
           <Button variant="primary" onClick={onClose}>閉じる</Button>
         </div>
       )}
+    </ModalShell>
+  );
+}
+
+/* ---- スターターパック: 開封(30秒広告→ガチャ演出→重複確認)のモーダル ---- */
+function StarterPackGachaModal({ pack, mySongs = [], onClose, onImport }) {
+  const [adDone, setAdDone] = useState(false);
+  const [drawn, setDrawn] = useState(null);
+  const [revealedCount, setRevealedCount] = useState(0);
+  const [step, setStep] = useState('reveal'); // 'reveal' | 'preview'
+  const [dupActions, setDupActions] = useState({});
+  const revealTimer = useRef(null);
+
+  // 広告視聴が終わった時点で、曲を確定させ「開封済み」として記録する(24時間クールダウンの起点)。
+  // ここで記録することで、演出後に全曲スキップしても再抽選できてしまうのを防ぐ。
+  const handleAdComplete = () => {
+    const picked = drawStarterPackSongs(pack);
+    setDrawn(picked);
+    saveStarterPackOpenedAt(pack.id, Date.now());
+    setAdDone(true);
+  };
+
+  useEffect(() => {
+    if (!adDone || !drawn || step !== 'reveal') return undefined;
+    if (revealedCount >= drawn.length) return undefined;
+    revealTimer.current = setTimeout(() => setRevealedCount((c) => c + 1), 900);
+    return () => clearTimeout(revealTimer.current);
+  }, [adDone, drawn, step, revealedCount]);
+
+  const skipReveal = () => {
+    clearTimeout(revealTimer.current);
+    setRevealedCount(drawn.length);
+    setStep('preview');
+  };
+
+  useEffect(() => {
+    if (drawn && revealedCount >= drawn.length && step === 'reveal') {
+      const t = setTimeout(() => setStep('preview'), 600);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [drawn, revealedCount, step]);
+
+  const duplicateMatches = useMemo(() => {
+    if (!drawn) return [];
+    return drawn.map((s) => findDuplicateSong(s, mySongs));
+  }, [drawn, mySongs]);
+
+  const confirmImport = () => {
+    if (drawn?.length) {
+      const items = drawn.map((s, i) => {
+        const dup = duplicateMatches[i];
+        const dupState = dupActions[i];
+        const action = dup ? (dupState?.mode || 'skip') : 'new';
+        const mergeFields = action === 'merge' && dupState?.mergeFields ? flattenMergeFieldKeys(dupState.mergeFields) : undefined;
+        return { song: s, action, existingId: dup?.id, mergeFields };
+      });
+      onImport(items);
+    }
+    onClose();
+  };
+
+  if (!adDone) {
+    return <AdGateModal seconds={30} label={`「${pack.name}」を開封する前に`} onComplete={handleAdComplete} onCancel={onClose} />;
+  }
+
+  if (step === 'reveal' && drawn) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, background: 'rgba(20,16,14,.94)', zIndex: 300,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}>
+        <div style={{ fontSize: 13, color: '#F3EEE1', marginBottom: 14, fontFamily: 'var(--font-display)' }}>
+          {pack.name} — {revealedCount} / {drawn.length}曲
+        </div>
+        <div style={{
+          width: '100%', maxWidth: 380, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+          maxHeight: '55vh', overflowY: 'auto', marginBottom: 20,
+        }}>
+          {drawn.slice(0, revealedCount).map((s, i) => (
+            <div key={i} style={{
+              background: '#fff', borderRadius: 10, padding: '10px 12px',
+              animation: 'starter-pop .35s ease-out',
+            }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 2 }}>{s.title}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--ink-soft)' }}>{[s.lyricist, s.composer].filter(Boolean).join(' / ')}</div>
+            </div>
+          ))}
+          {revealedCount < drawn.length && (
+            <div style={{
+              background: 'rgba(255,255,255,.14)', borderRadius: 10, padding: '10px 12px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 50,
+            }}>
+              <Sparkles size={18} color="#F3EEE1" />
+            </div>
+          )}
+        </div>
+        {revealedCount < drawn.length && (
+          <Button variant="quiet" onClick={skipReveal} style={{ color: '#F3EEE1', borderColor: 'rgba(255,255,255,.4)' }}>
+            <X size={13} /> 演出をスキップ
+          </Button>
+        )}
+        <style>{`@keyframes starter-pop { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }`}</style>
+      </div>
+    );
+  }
+
+  return (
+    <ModalShell onClose={onClose} width={540}>
+      <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>{pack.name} の結果</h2>
+      <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 14px', lineHeight: 1.7 }}>
+        {drawn?.length}曲を引きました。登録済みの曲と一致する可能性があるものは、どうするか選んでください。
+      </p>
+      {drawn && (
+        <div style={{ maxHeight: 360, overflowY: 'auto', marginBottom: 18, border: '1px solid var(--line)', borderRadius: 8 }}>
+          {drawn.map((s, i) => {
+            const dup = duplicateMatches[i];
+            if (!dup) {
+              return (
+                <div key={i} style={{
+                  fontSize: 12.5, padding: '8px 12px', borderBottom: i < drawn.length - 1 ? '1px solid var(--line)' : 'none',
+                }}>
+                  {s.title}
+                  <span style={{ color: 'var(--ink-soft)' }}> ({s.lyricist} / {s.composer})</span>
+                </div>
+              );
+            }
+            return (
+              <div key={i} style={{
+                padding: '10px 12px', borderBottom: i < drawn.length - 1 ? '1px solid var(--line)' : 'none',
+                background: 'var(--gold-soft)',
+              }}>
+                <div style={{ fontSize: 12.5, marginBottom: 4 }}>
+                  {s.title}
+                  <span style={{ color: 'var(--ink-soft)' }}> ({s.lyricist} / {s.composer})</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gold-text, #8a6a34)', marginBottom: 2 }}>
+                  <Flag size={11} /> 登録済みの曲と一致する可能性があります
+                </div>
+                <SongCompareCard existing={dup} incoming={s} />
+                <DupActionPicker
+                  name={`starter-dup-${i}`}
+                  existing={dup}
+                  incoming={s}
+                  value={dupActions[i]}
+                  onChange={(next) => setDupActions((prev) => ({ ...prev, [i]: next }))}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <Button variant="primary" onClick={confirmImport}>
+          <Check size={14} /> コレクションに追加する
+        </Button>
+      </div>
     </ModalShell>
   );
 }
