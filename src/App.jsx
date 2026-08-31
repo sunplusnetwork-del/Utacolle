@@ -180,6 +180,8 @@ const CHANGELOG = [
   {
     version: '2026-08-28',
     items: [
+      'PCとスマホなど複数端末を同時にログインしている時、片方で登録した曲がもう片方の保存によって消えてしまうことがある不具合を修正しました',
+      'マイページの「うたコレを共有する」ボタンのリンク先が古いURLのままになっていた不具合を修正しました',
       'スターターパックVol.1に、実際の合唱曲100曲を追加しました。ぜひ開封してみてください！',
     ],
   },
@@ -287,6 +289,36 @@ async function driveUpload(token, fileId, data) {
   });
   if (!res.ok) throw new Error(`Driveへの保存に失敗しました (${res.status})`);
   return res.json();
+}
+
+/* ---- 複数端末が同時にログインしている場合のデータ結合 ----
+   Driveへ保存する直前に、必ずDrive側の最新データ(他端末が保存したかもしれない内容)を取得し、
+   この端末が今アップロードしようとしている内容とマージしてからアップロードする。
+   これをしないと、複数端末で同時にログインしている時、片方の端末が「自分がその時点で知っている
+   全データ」でDrive上のファイルを丸ごと上書きしてしまい、もう片方の端末が追加・編集した内容が
+   消えてしまう事故が起きる(実際に発生した不具合)。
+   users/songsはどちらもID→中身のマップなので、同じIDが両方にあればupdatedAt(無ければcreatedAt)が
+   新しい方を採用し、片方にしか無いIDはそのまま両方残す形でマージする。
+   注意(既知の制約): この方式は「追加・編集」の消失は防げるが、「削除」の扱いには対応できない。
+   例えば端末Aで曲を削除した直後に、まだその削除を知らない端末Bが同期すると、削除したはずの曲が
+   復活してしまうことがありうる。これは削除の履歴(いつ・何を消したか)を持っていないための限界で、
+   きちんと対応するには別途「削除フラグ」のような仕組みが必要になる。 */
+function mergeSyncData(remote, local) {
+  const mergeMap = (remoteMap, localMap) => {
+    const out = { ...(remoteMap || {}) };
+    Object.entries(localMap || {}).forEach(([id, item]) => {
+      const existing = out[id];
+      if (!existing) { out[id] = item; return; }
+      const existingTime = existing.updatedAt || existing.createdAt || 0;
+      const itemTime = item.updatedAt || item.createdAt || 0;
+      out[id] = itemTime >= existingTime ? item : existing;
+    });
+    return out;
+  };
+  return {
+    users: mergeMap(remote.users, local.users),
+    songs: mergeMap(remote.songs, local.songs),
+  };
 }
 
 /* ---- 曲リストの大量共有(Googleドライブ経由) ----
@@ -4216,8 +4248,27 @@ export default function App() {
     }
     setDriveSyncStatus('syncing');
     try {
-      const result = await driveUpload(token, driveFileIdRef.current, next);
+      // 複数端末が同時にログインしている場合に備え、アップロード前に必ずDrive側の最新データを
+      // 取得し、この端末の変更とマージしてから保存する(詳しくはmergeSyncDataのコメントを参照)。
+      let toUpload = next;
+      if (driveFileIdRef.current) {
+        try {
+          const remote = await driveDownload(token, driveFileIdRef.current);
+          if (remote && remote.users && remote.songs) {
+            toUpload = mergeSyncData(remote, next);
+          }
+        } catch (e) {
+          // Drive側の最新データが取得できなくても致命的ではないので、そのままnextをアップロードする
+          console.warn('マージ用のDriveデータ取得に失敗しました', e);
+        }
+      }
+      const result = await driveUpload(token, driveFileIdRef.current, toUpload);
       if (result?.id) driveFileIdRef.current = result.id;
+      // マージによって他端末の変更がこの端末にも取り込まれた場合、手元の表示にも反映しておく
+      if (toUpload !== next) {
+        setData(toUpload);
+        await saveData(toUpload);
+      }
       setDriveSyncStatus('idle');
       setDriveError('');
     } catch (e) {
@@ -4448,7 +4499,7 @@ export default function App() {
   const isIos = typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
   const [showIosInstallHint, setShowIosInstallHint] = useState(false);
   const shareAppLink = async () => {
-    const url = 'https://sunplusnetwork-del.github.io/Utacolle/';
+    const url = 'https://utacolle.com/';
     const shareData = { title: 'うたコレ', text: '合唱曲コレクションアプリ「うたコレ」', url };
     if (navigator.share) {
       try { await navigator.share(shareData); return; } catch (e) { /* ユーザーがキャンセルした場合など、何もしない */ }
