@@ -178,6 +178,13 @@ const LAST_SEEN_CHANGELOG_KEY = 'chorusdb:last-seen-changelog'; // 「お知ら�
    マイページの「お知らせ」からは、いつでも全履歴を見返せる。 */
 const CHANGELOG = [
   {
+    version: '2026-09-01',
+    items: [
+      '新機能「ランダム再生」を追加しました。条件(作詩・作曲・編成・言語・タグ)を絞り込んで、その中からランダムに10曲を選んでその場で再生できます',
+      '埋め込み再生に対応していない動画URL(NHKの動画ページなど)を登録している曲は、プレイリスト再生の対象から自動的に除外されるようにしました',
+    ],
+  },
+  {
     version: '2026-08-28',
     items: [
       'PCとスマホなど複数端末を同時にログインしている時、片方で登録した曲がもう片方の保存によって消えてしまうことがある不具合を修正しました',
@@ -530,6 +537,13 @@ function getYoutubeVideoId(rawUrl) {
   } catch (e) {
     return null;
   }
+}
+
+// プレイリスト再生(YouTube埋め込みプレイヤー)で実際に再生できる曲かどうか。
+// NHKの動画ページ(movie-a.nhk.or.jp等)のように、埋め込み再生に対応していないURLを
+// 登録している曲は、動画URL自体はあってもプレイリスト再生の対象から除外する。
+function isPlayableInPlaylist(song) {
+  return !!getYoutubeVideoId(song.videoUrl);
 }
 
 function getYoutubeThumbnail(url) {
@@ -4056,6 +4070,8 @@ export default function App() {
   const [dbSort, setDbSort] = useState('random');
   const [groupBySuite, setGroupBySuite] = useState(false);
   const [showPlaylist, setShowPlaylist] = useState(false);
+  const [showRandomPlaylistSetup, setShowRandomPlaylistSetup] = useState(false);
+  const [randomPlaylistSongs, setRandomPlaylistSongs] = useState(null); // ランダム再生中の曲一覧(保存はしない)
   const [showScrollTop, setShowScrollTop] = useState(false);
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 600);
@@ -5707,9 +5723,16 @@ export default function App() {
               <Button
                 style={{ background: '#8156A0', color: '#fff', border: '1px solid #8156A0' }}
                 onClick={() => setShowPlaylist(true)}
-                disabled={mySongsAll.filter((s) => s.videoUrl).length === 0}
+                disabled={mySongsAll.filter(isPlayableInPlaylist).length === 0}
               >
                 <Film size={13} /> 再生
+              </Button>
+              <Button
+                variant="quiet"
+                onClick={() => setShowRandomPlaylistSetup(true)}
+                disabled={mySongsRaw.filter(isPlayableInPlaylist).length === 0}
+              >
+                <Shuffle size={13} /> ランダム再生
               </Button>
               <Button variant="primary" onClick={startNewSongRegistration}><Plus size={14} /> 登録</Button>
             </div>
@@ -6085,8 +6108,26 @@ export default function App() {
 
       {showPlaylist && (
         <PlaylistPlayer
-          songs={mySongsAll.filter((s) => s.videoUrl)}
+          songs={mySongsAll.filter(isPlayableInPlaylist)}
           onClose={() => setShowPlaylist(false)}
+        />
+      )}
+
+      {showRandomPlaylistSetup && (
+        <RandomPlaylistModal
+          mySongs={mySongsRaw}
+          onClose={() => setShowRandomPlaylistSetup(false)}
+          onStart={(picked) => {
+            setShowRandomPlaylistSetup(false);
+            setRandomPlaylistSongs(picked);
+          }}
+        />
+      )}
+
+      {randomPlaylistSongs && (
+        <PlaylistPlayer
+          songs={randomPlaylistSongs}
+          onClose={() => setRandomPlaylistSongs(null)}
         />
       )}
 
@@ -7276,6 +7317,52 @@ function ImportListModal({ initialCode, onClose, onImportSongs, onJoinEvent, onS
 }
 
 /* ---- スターターパック: 開封(30秒広告→ガチャ演出→重複確認)のモーダル ---- */
+/* ---- ランダムプレイリスト ----
+   詳細フィルタ(作詩・作曲・編成・言語・タグ。タグは複数選択でAND絞り込み)で対象を絞り込んだ上で、
+   その中からランダムに最大STARTER_PACK_DRAW_COUNT(10)曲を選んで、その場でプレイリスト再生する。
+   選曲の結果はどこにも保存しない(履歴として残さない)。埋め込み再生できない動画URLの曲は
+   isPlayableInPlaylistで除外される。 */
+const RANDOM_PLAYLIST_COUNT = 10;
+function drawRandomPlaylistSongs(pool) {
+  const arr = [...pool];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.slice(0, Math.min(RANDOM_PLAYLIST_COUNT, arr.length));
+}
+
+function RandomPlaylistModal({ mySongs = [], onClose, onStart }) {
+  const [filters, setFilters] = useState(emptySongFilters());
+  const candidates = useMemo(
+    () => filterSongs(mySongs, filters).filter(isPlayableInPlaylist),
+    [mySongs, filters]
+  );
+
+  return (
+    <ModalShell onClose={onClose} width={560}>
+      <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>ランダムプレイリスト</h2>
+      <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 14px', lineHeight: 1.7 }}>
+        条件を絞り込むと、その中からランダムで最大{RANDOM_PLAYLIST_COUNT}曲を選んで再生します
+        (条件を何も設定しなければ、コレクション全体が対象になります)。選んだ結果は保存されません。
+      </p>
+      <SongFilterBar filters={filters} setFilters={setFilters} songs={mySongs} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+        <span style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>
+          対象: {candidates.length}曲(このうち最大{RANDOM_PLAYLIST_COUNT}曲を再生します)
+        </span>
+        <Button
+          variant="primary"
+          disabled={candidates.length === 0}
+          onClick={() => onStart(drawRandomPlaylistSongs(candidates))}
+        >
+          <Shuffle size={14} /> ランダムに選んで再生
+        </Button>
+      </div>
+    </ModalShell>
+  );
+}
+
 function StarterPackGachaModal({ pack, mySongs = [], onClose, onImport }) {
   const [adDone, setAdDone] = useState(false);
   const [drawn, setDrawn] = useState(null);
