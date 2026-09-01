@@ -180,7 +180,9 @@ const CHANGELOG = [
   {
     version: '2026-09-01',
     items: [
-      '新機能「ランダム再生」を追加しました。条件(作詩・作曲・編成・言語・タグ)を絞り込んで、その中からランダムに10曲を選んでその場で再生できます',
+      'コレクション画面上部のボタンの並び順を整理しました(登録・読込・一括・共有・再生)',
+      '「再生」ボタンを押すと、表示中の曲をすべて再生するか、条件(作詩・作曲・編成・言語・タグ)を絞ってランダムに10曲を選んで再生するかを選べるようにしました',
+      'テーマによってはコレクション画面上部のボタンが2行になってしまう表示崩れを直しました',
       '埋め込み再生に対応していない動画URL(NHKの動画ページなど)を登録している曲は、プレイリスト再生の対象から自動的に除外されるようにしました',
     ],
   },
@@ -4070,6 +4072,7 @@ export default function App() {
   const [dbSort, setDbSort] = useState('random');
   const [groupBySuite, setGroupBySuite] = useState(false);
   const [showPlaylist, setShowPlaylist] = useState(false);
+  const [showPlayChooser, setShowPlayChooser] = useState(false); // 「再生」ボタンから開く、通常再生かランダム再生かの選択
   const [showRandomPlaylistSetup, setShowRandomPlaylistSetup] = useState(false);
   const [randomPlaylistSongs, setRandomPlaylistSongs] = useState(null); // ランダム再生中の曲一覧(保存はしない)
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -5716,25 +5719,18 @@ export default function App() {
               自分が歌った・聴いた曲を集めましょう
               {mySongsRaw.length > 0 && <span style={{ marginLeft: 8, fontWeight: 600, color: 'var(--ink)' }}>登録曲数: {mySongsRaw.length}曲</span>}
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div className="mydb-toolbar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button variant="primary" onClick={startNewSongRegistration}><Plus size={14} /> 登録</Button>
               <Button variant="sage" onClick={() => setShowImportList(true)}><QrCode size={13} /> 読込</Button>
+              <Button style={{ background: '#4A7A9C', color: '#fff', border: '1px solid #4A7A9C' }} onClick={() => setShowCsvImport(true)}><FileText size={13} /> 一括</Button>
               <Button variant="gold" onClick={() => { setSelectedIds(new Set()); setShowShareList(true); }}><Share2 size={13} /> 共有</Button>
-              <Button style={{ background: '#4A7A9C', color: '#fff', border: '1px solid #4A7A9C' }} onClick={() => setShowCsvImport(true)}><FileText size={13} /> CSV</Button>
               <Button
                 style={{ background: '#8156A0', color: '#fff', border: '1px solid #8156A0' }}
-                onClick={() => setShowPlaylist(true)}
-                disabled={mySongsAll.filter(isPlayableInPlaylist).length === 0}
+                onClick={() => setShowPlayChooser(true)}
+                disabled={mySongsRaw.filter(isPlayableInPlaylist).length === 0}
               >
                 <Film size={13} /> 再生
               </Button>
-              <Button
-                variant="quiet"
-                onClick={() => setShowRandomPlaylistSetup(true)}
-                disabled={mySongsRaw.filter(isPlayableInPlaylist).length === 0}
-              >
-                <Shuffle size={13} /> ランダム再生
-              </Button>
-              <Button variant="primary" onClick={startNewSongRegistration}><Plus size={14} /> 登録</Button>
             </div>
           </div>
 
@@ -6113,6 +6109,14 @@ export default function App() {
         />
       )}
 
+      {showPlayChooser && (
+        <PlayChooserModal
+          onClose={() => setShowPlayChooser(false)}
+          onPlayAll={() => { setShowPlayChooser(false); setShowPlaylist(true); }}
+          onPlayRandom={() => { setShowPlayChooser(false); setShowRandomPlaylistSetup(true); }}
+        />
+      )}
+
       {showRandomPlaylistSetup && (
         <RandomPlaylistModal
           mySongs={mySongsRaw}
@@ -6473,6 +6477,11 @@ function Wrap({ children, theme }) {
 
         @media (max-width: 639px) {
           .app-wrap { padding: 16px 14px 60px !important; border-radius: 0 !important; }
+          /* コレクション画面上部のボタン列(読込・共有・CSV・再生・ランダム再生・登録)は、
+             テーマのフォントによってボタン幅が変わり、折り返して2行になってしまうことがあった。
+             折り返させず、横スクロールで1行に収まるようにする。 */
+          .mydb-toolbar { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+          .mydb-toolbar > button { flex-shrink: 0; }
         }
       `}</style>
       {children}
@@ -6490,7 +6499,10 @@ function NavTab({ active, onClick, icon, label, badge, color = 'var(--wine)' }) 
       borderRadius: '10px 10px 0 0',
       color: active ? '#fff' : 'var(--ink-soft)', fontWeight: active ? 700 : 600,
       fontSize: 13.5, cursor: 'pointer', fontFamily: 'var(--font-body)',
-      marginBottom: -1, marginRight: 4, position: 'relative', top: active ? 0 : 4,
+      // タブ同士を少し重ねて配置する(ノートの見出しタブのような見た目にするため)。
+      // アクティブなタブが重なりの上に来るよう、zIndexで手前に出す。
+      marginBottom: -1, marginRight: -8, position: 'relative', top: active ? 0 : 4,
+      zIndex: active ? 2 : 1,
       boxShadow: active ? '0 -3px 8px rgba(0,0,0,.10)' : 'none',
       transition: 'top .15s ease',
     }}>
@@ -7330,6 +7342,47 @@ function drawRandomPlaylistSongs(pool) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr.slice(0, Math.min(RANDOM_PLAYLIST_COUNT, arr.length));
+}
+
+/* ---- 「再生」ボタンから開く、再生方法の選択 ----
+   「表示中の曲をすべて再生」(既存のプレイリスト再生)か「条件を絞ってランダムに10曲再生」かを選ぶ。 */
+function PlayChooserModal({ onClose, onPlayAll, onPlayRandom }) {
+  return (
+    <ModalShell onClose={onClose} width={420}>
+      <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>再生方法を選ぶ</h2>
+      <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 18px', lineHeight: 1.7 }}>
+        今表示している曲をすべて再生するか、条件を絞ってランダムに再生するか選べます。
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button onClick={onPlayAll} style={{
+          display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '14px 16px',
+          background: 'var(--wine)', color: '#fff', border: 'none', borderRadius: 'var(--radius-control, 10px)',
+          cursor: 'pointer', fontSize: 14, fontWeight: 700, textAlign: 'left', fontFamily: 'var(--font-body)',
+        }}>
+          <Film size={18} />
+          <span>
+            表示中の曲をすべて再生
+            <div style={{ fontSize: 11, fontWeight: 400, opacity: 0.9, marginTop: 2 }}>
+              今の並び順・絞り込みのまま、順番に再生します
+            </div>
+          </span>
+        </button>
+        <button onClick={onPlayRandom} style={{
+          display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '14px 16px',
+          background: 'var(--surface, #fff)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 'var(--radius-control, 10px)',
+          cursor: 'pointer', fontSize: 14, fontWeight: 600, textAlign: 'left', fontFamily: 'var(--font-body)',
+        }}>
+          <Shuffle size={18} />
+          <span>
+            条件を絞ってランダムに再生
+            <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--ink-soft)', marginTop: 2 }}>
+              作詩・作曲・編成・タグなどで絞り込み、その中から最大{RANDOM_PLAYLIST_COUNT}曲を選んで再生します
+            </div>
+          </span>
+        </button>
+      </div>
+    </ModalShell>
+  );
 }
 
 function RandomPlaylistModal({ mySongs = [], onClose, onStart }) {
