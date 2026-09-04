@@ -8,7 +8,7 @@ import {
   Music2, Plus, Search, Users, Share2, Copy, Trash2, Pencil, Shuffle,
   X, Check, UserPlus, UserMinus, ExternalLink, Sparkles, ChevronLeft, ChevronRight, ChevronUp,
   User, ChevronDown, Loader2, Ticket, BookOpen, Eye, EyeOff, Film, FileText, QrCode,
-  Radar, MapPin, Bell, Ban, Flag, ShieldCheck, Lock, Camera, VolumeX, GripVertical, Gift,
+  Radar, MapPin, Bell, Ban, Flag, ShieldCheck, Lock, Camera, VolumeX, GripVertical, Gift, Image,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -177,6 +177,20 @@ const LAST_SEEN_CHANGELOG_KEY = 'chorusdb:last-seen-changelog'; // 「お知ら�
    起動時、前回このお知らせを見た時より新しい項目があれば、自動でポップアップ表示する。
    マイページの「お知らせ」からは、いつでも全履歴を見返せる。 */
 const CHANGELOG = [
+  {
+    version: '2026-09-03',
+    items: [
+      '新機能「ギャラリー」を追加しました。運営が公開する作品集やコンクール曲情報などを見て、気になる曲を選んでコレクションに追加できます(準備が整い次第、コレクションを公開していきます)',
+    ],
+  },
+  {
+    version: '2026-09-02',
+    items: [
+      '曲の登録時に表示していた広告を、一時的に取りやめました',
+      'スターターパックで、10回引くとちょうど100曲すべてが重複なく揃うようにしました',
+      'スマホで見た時、「複数選択」ボタンが折り返されず「詳細フィルタ」の隣に収まるようにしました',
+    ],
+  },
   {
     version: '2026-09-01',
     items: [
@@ -1104,6 +1118,12 @@ function encodeQR(text, ecLevelLetter = 'M') {
    Ver.2でこの値をtrueに戻せば復活する。 */
 const SOCIAL_FEATURES_ENABLED = false;
 
+/* ---- 曲の登録時の広告表示の一時凍結 ----
+   曲の登録を続けるたびに一定間隔で広告(15秒)を挟む仕組みがあるが、依頼により一時的に凍結する。
+   ロジック自体(登録回数のカウント・広告表示条件の判定)は残したまま、このフラグで広告表示だけを
+   止めている。再開する場合はtrueに戻せばよい(その時点までの登録回数カウントはそのまま活きる)。 */
+const SONG_REGISTRATION_AD_ENABLED = false;
+
 const SHARE_URL_BASE = 'https://utacolle.com/';
 const SHARE_QR_SAFE_LIMIT = 1200; // 文字数。これを超えるとQRの読み取り信頼性が下がる
 
@@ -1617,6 +1637,7 @@ function starterSong(overrides) {
 }
 
 const STARTER_PACK_OPENED_KEY = 'chorusdb:starter-pack-opened'; // { [packId]: 最後に開封したtimestamp }
+const STARTER_PACK_DRAWN_KEY = 'chorusdb:starter-pack-drawn'; // { [packId]: [これまでに引いた曲のインデックス] }
 const STARTER_PACK_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 同じパックを再度開けるまでの時間(24時間)
 const STARTER_PACK_DRAW_COUNT = 10; // 1回の開封で選ばれる曲数
 
@@ -1649,14 +1670,49 @@ function formatCooldown(ms) {
   if (h > 0) return `あと${h}時間${m}分`;
   return `あと${m}分`;
 }
-// パックの曲プールから、重複しないようSTARTER_PACK_DRAW_COUNT曲をランダムに選ぶ(Fisher-Yates)
-function drawStarterPackSongs(pack) {
-  const pool = [...pack.songs];
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
+
+function loadStarterPackDrawnMap() {
+  try {
+    const raw = localStorage.getItem(STARTER_PACK_DRAWN_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
   }
-  return pool.slice(0, Math.min(STARTER_PACK_DRAW_COUNT, pool.length));
+}
+function saveStarterPackDrawnIndices(packId, indices) {
+  try {
+    const map = loadStarterPackDrawnMap();
+    map[packId] = indices;
+    localStorage.setItem(STARTER_PACK_DRAWN_KEY, JSON.stringify(map));
+  } catch (e) { /* noop */ }
+}
+function shuffleArray(arr) {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+// パックの曲プールから、これまでに引いていない曲を優先してSTARTER_PACK_DRAW_COUNT曲をランダムに選ぶ。
+// パック内の曲(例: 100曲)を、10回引くとちょうど全曲揃うよう、同じ曲が出ないように管理する。
+// 全曲引き終わったら、記録をリセットしてまた最初から引けるようにする。
+function drawStarterPackSongs(pack) {
+  const total = pack.songs.length;
+  const drawnMap = loadStarterPackDrawnMap();
+  let drawnIndices = new Set(drawnMap[pack.id] || []);
+  // すでに全曲引き終わっている(または曲データ自体が減って記録と食い違っている)場合はリセットする
+  if (drawnIndices.size >= total) drawnIndices = new Set();
+
+  const remainingIndices = pack.songs.map((_, i) => i).filter((i) => !drawnIndices.has(i));
+  const pickedIndices = shuffleArray(remainingIndices).slice(0, Math.min(STARTER_PACK_DRAW_COUNT, remainingIndices.length));
+
+  const nextDrawn = new Set(drawnIndices);
+  pickedIndices.forEach((i) => nextDrawn.add(i));
+  // ちょうど全曲引き終わった場合は、次回また最初から引けるようその場でリセットしておく
+  saveStarterPackDrawnIndices(pack.id, nextDrawn.size >= total ? [] : Array.from(nextDrawn));
+
+  return shuffleArray(pickedIndices.map((i) => pack.songs[i]));
 }
 
 const STARTER_PACKS = [
@@ -1767,6 +1823,23 @@ const STARTER_PACKS = [
       starterSong({ title: '真昼の星', suiteGenre: '混声合唱組曲', suiteTitle: '心の四季', lyricist: '吉野弘', composer: '高田三郎', year: '1967', formation: '混声四部', accompaniment: 'ピアノ', language: '日本語', videoUrl: 'https://youtu.be/BAKgzeCM_BQ?si=eIHG1LIKeiicryug' }),
     ],
   },
+];
+
+/* ---- ギャラリー(運営が随時アップロードしていく作品集・コンクール情報など) ----
+   スターターパックと違い、抽選(ガチャ)やクールダウンは無く、単純に一覧から曲を選んで
+   自分のコレクションに追加できる。詳細フィルタで絞り込むこともできる。
+   新しいコレクションを追加したい場合は、下のGALLERY_COLLECTIONS配列に新しいオブジェクトを
+   追加するだけでよい(STARTER_PACKSと同じ形式。starterSong({...})で曲情報を並べる)。 */
+const GALLERY_COLLECTIONS = [
+  // 例:
+  // {
+  //   id: 'gallery-001',
+  //   name: '第◯回 全日本合唱コンクール 課題曲',
+  //   description: 'コンクールの課題曲をまとめました。',
+  //   songs: [
+  //     starterSong({ title: '曲名', lyricist: '作詩者', composer: '作曲者', formation: '混声四部', videoUrl: 'https://youtu.be/xxxx' }),
+  //   ],
+  // },
 ];
 
 const SUNG_TAG_NAME = '歌ったことある';
@@ -3257,7 +3330,7 @@ function TagCycleChip({ name, state, onClick }) {
   );
 }
 
-function SongFilterBar({ filters, setFilters, sort, setSort, songs = [], onShuffle }) {
+function SongFilterBar({ filters, setFilters, sort, setSort, songs = [], onShuffle, selectToggle }) {
   const [expanded, setExpanded] = useState(false);
   const setField = (k) => (v) => setFilters((prev) => ({ ...prev, [k]: v }));
   const active = isSongFilterActive(filters);
@@ -3313,6 +3386,14 @@ function SongFilterBar({ filters, setFilters, sort, setSort, songs = [], onShuff
             width: 6, height: 6, borderRadius: '50%', background: 'var(--wine)', display: 'inline-block',
           }} />}
         </Button>
+        {selectToggle && (
+          <Button
+            variant={selectToggle.selectMode ? 'default' : 'quiet'}
+            onClick={selectToggle.onToggle}
+          >
+            {selectToggle.selectMode ? <X size={13} /> : <Check size={13} />} {selectToggle.selectMode ? '選択をやめる' : '複数選択'}
+          </Button>
+        )}
       </div>
 
       {expanded && (
@@ -4040,6 +4121,7 @@ export default function App() {
   };
   const startNewSongRegistration = async () => {
     const count = await bumpSongRegistrationCount();
+    if (!SONG_REGISTRATION_AD_ENABLED) { openSongForm({}); return; }
     const accountAgeMs = Date.now() - (me?.createdAt || Date.now());
     const pastFreePeriod = accountAgeMs >= AD_FREE_DAYS * 24 * 60 * 60 * 1000;
     const todayViews = await getTodayAdViewCount();
@@ -4052,6 +4134,7 @@ export default function App() {
   };
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [openingStarterPack, setOpeningStarterPack] = useState(null); // 開封中のスターターパック
+  const [openingGalleryCollection, setOpeningGalleryCollection] = useState(null); // 閲覧中のギャラリーコレクション
   const [, forceCooldownRefresh] = useState(0);
   useEffect(() => {
     // スターターパックのクールダウン表示を定期的に更新する(厳密なリアルタイムでなくてよいので1分間隔)
@@ -5305,6 +5388,7 @@ export default function App() {
       <div style={{ display: 'flex', gap: 0, marginBottom: 22, borderBottom: '1px solid var(--line)', paddingTop: 4 }}>
         <NavTab active={view === 'mydb'} onClick={() => setView('mydb')} icon={<Ticket size={15} />} label="コレクション" color="var(--wine)" />
         <NavTab active={view === 'starterpack'} onClick={() => setView('starterpack')} icon={<Gift size={15} />} label="スターターパック" color="var(--sage)" />
+        <NavTab active={view === 'gallery'} onClick={() => setView('gallery')} icon={<Image size={15} />} label="ギャラリー" color="var(--gold)" />
         {SOCIAL_FEATURES_ENABLED && (
           <NavTab active={view === 'discover'} onClick={() => { setView('discover'); setViewedUserId(null); }} icon={<Users size={15} />} label="さがす" color="var(--gold)" />
         )}
@@ -5711,6 +5795,40 @@ export default function App() {
         </div>
       )}
 
+      {/* ---- ギャラリー ---- */}
+      {view === 'gallery' && (
+        <div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 17, marginBottom: 4 }}>
+              <Image size={16} color="var(--gold)" style={{ verticalAlign: -2, marginRight: 4 }} />
+              ギャラリー
+            </div>
+            <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', lineHeight: 1.7, margin: 0 }}>
+              運営が公開している作品集やコンクールの曲情報などを見て、気になる曲を選んで自分のコレクションに追加できます。
+              広告や回数の制限はありません。
+            </p>
+          </div>
+          {GALLERY_COLLECTIONS.length === 0 && (
+            <EmptyState title="今はまだ公開されているコレクションがありません" body="また今度のぞいてみてください。" />
+          )}
+          {GALLERY_COLLECTIONS.map((collection) => (
+            <div key={collection.id} style={{
+              background: 'var(--surface, #fff)', border: '1px solid var(--line)', borderRadius: 12,
+              padding: 18, marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14.5, marginBottom: 4 }}>{collection.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-soft)', lineHeight: 1.6 }}>{collection.description}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4 }}>収録曲数: {collection.songs.length}曲</div>
+              </div>
+              <Button variant="gold" onClick={() => setOpeningGalleryCollection(collection)}>
+                <Image size={14} /> 見る
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ---- マイDB ---- */}
       {view === 'mydb' && (
         <div>
@@ -5736,7 +5854,14 @@ export default function App() {
 
           {mySongsRaw.length > 0 && (
             <>
-              <SongFilterBar filters={dbFilters} setFilters={setDbFilters} sort={dbSort} setSort={setDbSort} songs={mySongsRaw} onShuffle={shuffleSongs} />
+              <SongFilterBar
+                filters={dbFilters} setFilters={setDbFilters} sort={dbSort} setSort={setDbSort}
+                songs={mySongsRaw} onShuffle={shuffleSongs}
+                selectToggle={detailMode === 'simple' ? {
+                  selectMode,
+                  onToggle: () => { setSelectMode((v) => !v); setSelectedIds(new Set()); },
+                } : null}
+              />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center', marginBottom: 14 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--ink-soft)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={groupBySuite} onChange={(e) => setGroupBySuite(e.target.checked)} style={{ width: 14, height: 14 }} />
@@ -5751,14 +5876,6 @@ export default function App() {
                   leftLabel="簡易表示"
                   rightLabel="詳細表示"
                 />
-                {detailMode === 'simple' && (
-                  <Button
-                    variant={selectMode ? 'default' : 'quiet'}
-                    onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
-                  >
-                    {selectMode ? <X size={13} /> : <Check size={13} />} {selectMode ? '選択をやめる' : '複数選択'}
-                  </Button>
-                )}
               </div>
               {selectMode && (
                 <div style={{
@@ -6044,6 +6161,15 @@ export default function App() {
           pack={openingStarterPack}
           mySongs={mySongsRaw}
           onClose={() => setOpeningStarterPack(null)}
+          onImport={bulkImportSongs}
+        />
+      )}
+
+      {openingGalleryCollection && (
+        <GalleryCollectionModal
+          collection={openingGalleryCollection}
+          mySongs={mySongsRaw}
+          onClose={() => setOpeningGalleryCollection(null)}
           onImport={bulkImportSongs}
         />
       )}
@@ -7411,6 +7537,146 @@ function RandomPlaylistModal({ mySongs = [], onClose, onStart }) {
         >
           <Shuffle size={14} /> ランダムに選んで再生
         </Button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/* ---- ギャラリー: コレクションを開いて、曲を個別または複数選択して自分のコレクションに追加する ---- */
+function GalleryCollectionModal({ collection, mySongs = [], onClose, onImport }) {
+  const [filters, setFilters] = useState(emptySongFilters());
+  const [selectedIndices, setSelectedIndices] = useState(new Set());
+  const [step, setStep] = useState('browse'); // 'browse' | 'preview'
+  const [dupActions, setDupActions] = useState({});
+
+  const indexedSongs = useMemo(
+    () => collection.songs.map((s, i) => ({ ...s, __idx: i })),
+    [collection.songs]
+  );
+  const filtered = useMemo(() => filterSongs(indexedSongs, filters), [indexedSongs, filters]);
+
+  const toggleSelect = (idx) => {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
+  const selectAllFiltered = () => setSelectedIndices((prev) => {
+    const next = new Set(prev);
+    filtered.forEach((s) => next.add(s.__idx));
+    return next;
+  });
+  const clearSelection = () => setSelectedIndices(new Set());
+
+  const selectedSongs = useMemo(
+    () => collection.songs.filter((_, i) => selectedIndices.has(i)),
+    [collection.songs, selectedIndices]
+  );
+  const duplicateMatches = useMemo(
+    () => selectedSongs.map((s) => findDuplicateSong(s, mySongs)),
+    [selectedSongs, mySongs]
+  );
+
+  const confirmImport = () => {
+    const items = selectedSongs.map((s, i) => {
+      const dup = duplicateMatches[i];
+      const dupState = dupActions[i];
+      const action = dup ? (dupState?.mode || 'skip') : 'new';
+      const mergeFields = action === 'merge' && dupState?.mergeFields ? flattenMergeFieldKeys(dupState.mergeFields) : undefined;
+      return { song: s, action, existingId: dup?.id, mergeFields };
+    });
+    onImport(items);
+    onClose();
+  };
+
+  if (step === 'browse') {
+    return (
+      <ModalShell onClose={onClose} width={640}>
+        <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>{collection.name}</h2>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 14px', lineHeight: 1.7 }}>{collection.description}</p>
+        <SongFilterBar filters={filters} setFilters={setFilters} songs={collection.songs} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '10px 0' }}>
+          <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
+            {filtered.length}曲中 {selectedIndices.size}曲を選択中
+          </span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button variant="quiet" onClick={selectAllFiltered}><Check size={12} /> 表示中を全選択</Button>
+            <Button variant="quiet" onClick={clearSelection}><X size={12} /> 選択解除</Button>
+          </div>
+        </div>
+        <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8, marginBottom: 16 }}>
+          {filtered.map((s) => (
+            <label key={s.__idx} style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+              borderBottom: '1px solid var(--line)', cursor: 'pointer',
+            }}>
+              <input type="checkbox" checked={selectedIndices.has(s.__idx)} onChange={() => toggleSelect(s.__idx)} style={{ width: 15, height: 15, flexShrink: 0 }} />
+              <div style={{ fontSize: 12.5 }}>
+                <span style={{ fontWeight: 600 }}>{s.title}</span>
+                <span style={{ color: 'var(--ink-soft)' }}> ({[s.lyricist, s.composer].filter(Boolean).join(' / ')})</span>
+              </div>
+            </label>
+          ))}
+          {filtered.length === 0 && (
+            <div style={{ padding: 20, textAlign: 'center', fontSize: 12.5, color: 'var(--ink-soft)' }}>条件に合う曲がありません。</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button variant="primary" disabled={selectedIndices.size === 0} onClick={() => setStep('preview')}>
+            <Plus size={14} /> 選択した{selectedIndices.size}曲を追加
+          </Button>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell onClose={onClose} width={540}>
+      <h2 style={{ fontFamily: 'var(--font-display)', margin: '0 0 4px' }}>追加内容の確認</h2>
+      <p style={{ fontSize: 12.5, color: 'var(--ink-soft)', margin: '0 0 14px', lineHeight: 1.7 }}>
+        {selectedSongs.length}曲を追加します。登録済みの曲と一致する可能性があるものは、どうするか選んでください。
+      </p>
+      <div style={{ maxHeight: 360, overflowY: 'auto', marginBottom: 18, border: '1px solid var(--line)', borderRadius: 8 }}>
+        {selectedSongs.map((s, i) => {
+          const dup = duplicateMatches[i];
+          if (!dup) {
+            return (
+              <div key={i} style={{
+                fontSize: 12.5, padding: '8px 12px', borderBottom: i < selectedSongs.length - 1 ? '1px solid var(--line)' : 'none',
+              }}>
+                {s.title}
+                <span style={{ color: 'var(--ink-soft)' }}> ({s.lyricist} / {s.composer})</span>
+              </div>
+            );
+          }
+          return (
+            <div key={i} style={{
+              padding: '10px 12px', borderBottom: i < selectedSongs.length - 1 ? '1px solid var(--line)' : 'none',
+              background: 'var(--gold-soft)',
+            }}>
+              <div style={{ fontSize: 12.5, marginBottom: 4 }}>
+                {s.title}
+                <span style={{ color: 'var(--ink-soft)' }}> ({s.lyricist} / {s.composer})</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--gold-text, #8a6a34)', marginBottom: 2 }}>
+                <Flag size={11} /> 登録済みの曲と一致する可能性があります
+              </div>
+              <SongCompareCard existing={dup} incoming={s} />
+              <DupActionPicker
+                name={`gallery-dup-${i}`}
+                existing={dup}
+                incoming={s}
+                value={dupActions[i]}
+                onChange={(next) => setDupActions((prev) => ({ ...prev, [i]: next }))}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <Button variant="quiet" onClick={() => setStep('browse')}><ChevronLeft size={13} /> 選び直す</Button>
+        <Button variant="primary" onClick={confirmImport}><Check size={14} /> コレクションに追加する</Button>
       </div>
     </ModalShell>
   );
